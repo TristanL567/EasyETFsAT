@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from fondant.oekb.models import OeKBReportDetailResponse, OeKBReportListItem
-from fondant.oekb.parser import build_sourceage_values
+from fondant.oekb.parser import build_sourceage_result, build_sourceage_values
 
 
 def _report() -> OeKBReportListItem:
@@ -22,6 +22,10 @@ def _detail(payload: dict) -> OeKBReportDetailResponse:
 
 def _sourceage_values(payload: dict) -> dict:
     return build_sourceage_values("IE00BMTX1Y45", _report(), _detail(payload))
+
+
+def _sourceage_result(payload: dict):
+    return build_sourceage_result("IE00BMTX1Y45", _report(), _detail(payload))
 
 
 def test_build_sourceage_values_maps_bvjurperson_and_stiftung_suffix_keys() -> None:
@@ -111,6 +115,26 @@ def test_build_sourceage_values_drops_unknown_tax_line_code() -> None:
     assert all("unbekannte" not in key for key in values)
 
 
+def test_build_sourceage_result_reports_unknown_tax_line_code() -> None:
+    result = _sourceage_result(
+        {
+            "werte": [
+                {
+                    "steuerName": "StB_Unbekannte_Steuerzeile",
+                    "pvMitOption4": "999.0",
+                }
+            ]
+        },
+    )
+
+    assert len(result.diagnostics) == 1
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "unknown_tax_field"
+    assert diagnostic.raw_key == "steuerName"
+    assert diagnostic.raw_value == "StB_Unbekannte_Steuerzeile"
+    assert diagnostic.path == ("werte", "0", "steuerName")
+
+
 def test_build_sourceage_values_drops_unknown_category_code() -> None:
     values = _sourceage_values(
         {
@@ -129,6 +153,27 @@ def test_build_sourceage_values_drops_unknown_category_code() -> None:
     assert all("institutional" not in key for key in values)
 
 
+def test_build_sourceage_result_reports_unknown_category_code() -> None:
+    result = _sourceage_result(
+        {
+            "werte": [
+                {
+                    "steuerName": "StB_Einkuenfte_steuerpflichtig",
+                    "pvMitOption4": "1.0",
+                    "institutionalInvestor4": "999.0",
+                }
+            ]
+        },
+    )
+
+    assert result.values["steuerpflichtige_einkuenfte_pv_mit"] == Decimal("1.0")
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "unknown_category"
+    assert diagnostic.raw_key == "institutionalInvestor4"
+    assert diagnostic.raw_value == "999.0"
+    assert diagnostic.tax_field == "steuerpflichtige_einkuenfte"
+
+
 def test_build_sourceage_values_drops_malformed_numeric_value() -> None:
     values = _sourceage_values(
         {
@@ -144,6 +189,27 @@ def test_build_sourceage_values_drops_malformed_numeric_value() -> None:
 
     assert values["steuerpflichtige_einkuenfte_pv_mit"] is None
     assert values["steuerpflichtige_einkuenfte_pv_ohne"] == Decimal("2.0")
+
+
+def test_build_sourceage_result_reports_malformed_numeric_value() -> None:
+    result = _sourceage_result(
+        {
+            "werte": [
+                {
+                    "steuerName": "StB_Einkuenfte_steuerpflichtig",
+                    "pvMitOption4": "not-a-number",
+                    "pvOhneOption4": "2.0",
+                }
+            ]
+        },
+    )
+
+    assert result.values["steuerpflichtige_einkuenfte_pv_mit"] is None
+    assert result.values["steuerpflichtige_einkuenfte_pv_ohne"] == Decimal("2.0")
+    diagnostic = result.diagnostics[0]
+    assert diagnostic.code == "invalid_numeric_value"
+    assert diagnostic.raw_key == "pvMitOption4"
+    assert diagnostic.raw_value == "not-a-number"
 
 
 def test_build_sourceage_values_leaves_missing_expected_value_as_none() -> None:

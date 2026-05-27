@@ -31,9 +31,15 @@ from fondant.oekb.models import OeKBReportDetailResponse, OeKBReportListItem
 
 
 class FakeOeKBClient:
-    def __init__(self, version: int = 1, age_value: str = "1.2500") -> None:
+    def __init__(
+        self,
+        version: int = 1,
+        age_value: str = "1.2500",
+        include_parser_diagnostics: bool = False,
+    ) -> None:
         self.version = version
         self.age_value = age_value
+        self.include_parser_diagnostics = include_parser_diagnostics
 
     async def get_report_list(self, isin: str) -> list[OeKBReportListItem]:
         return [
@@ -76,6 +82,17 @@ class FakeOeKBClient:
                 {"steuerName": "StB_KESt", "pvMitOption4": "0.3300"},
             ],
         }
+        if self.include_parser_diagnostics:
+            payload["werte"].extend(
+                [
+                    {"steuerName": "StB_Unbekannte_Steuerzeile", "pvMitOption4": "999.0"},
+                    {
+                        "steuerName": "StB_Einkuenfte_steuerpflichtig",
+                        "pvMitOption4": "not-a-number",
+                        "institutionalInvestor4": "999.0",
+                    },
+                ]
+            )
         return OeKBReportDetailResponse(
             stmId=stm_id,
             statusCode="FIN",
@@ -189,3 +206,37 @@ async def test_ingest_isin_updates_same_version_when_payload_changes(
     assert sourceage_row.ag_ertraege_pv_mit == Decimal("2.5000")
     assert taxdat_row is not None
     assert taxdat_row.amount == Decimal("2.5000")
+
+
+@pytest.mark.asyncio
+async def test_ingest_isin_exposes_parser_diagnostics_without_changing_curated_output(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pipeline, "AsyncSessionFactory", sqlite_session_factory)
+
+    isin = "AT0000A1TEST"
+    result = await pipeline.ingest_isin(
+        isin,
+        client=FakeOeKBClient(version=1, include_parser_diagnostics=True),
+    )
+
+    assert result.status == "SUCCESS"
+    assert [diagnostic.code for diagnostic in result.parser_diagnostics] == [
+        "unknown_tax_field",
+        "invalid_numeric_value",
+        "unknown_category",
+    ]
+
+    async with sqlite_session_factory() as session:
+        taxdat_count = await session.scalar(select(func.count()).select_from(TAXDAT))
+        sourceage_row = await session.scalar(
+            select(SOURCEAGE).where(SOURCEAGE.isin == isin, SOURCEAGE.stm_id == 1001)
+        )
+        log_row = await session.scalar(select(IMPLOG).where(IMPLOG.isin == isin))
+
+    assert taxdat_count == 2
+    assert sourceage_row is not None
+    assert sourceage_row.steuerpflichtige_einkuenfte_pv_mit is None
+    assert log_row is not None
+    assert "parser diagnostics 3" in (log_row.message or "")

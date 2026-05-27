@@ -31,7 +31,8 @@ from fondant.oekb.models import OeKBReportListItem
 from fondant.oekb.parser import (
     CATEGORY_CODE_BY_KEY,
     METRIC_CODE_BY_KEY,
-    build_sourceage_values,
+    ParserDiagnostic,
+    build_sourceage_result,
     build_sourceraw_values,
     build_sourcerpt_values,
 )
@@ -70,6 +71,7 @@ class IngestionResult:
     records_written: int
     run_id: uuid.UUID
     message: str | None = None
+    parser_diagnostics: tuple[ParserDiagnostic, ...] = ()
 
 
 async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> IngestionResult:
@@ -80,6 +82,7 @@ async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> Ingesti
         records_seen = 0
         records_written = 0
         records_skipped = 0
+        parser_diagnostics: list[ParserDiagnostic] = []
 
         try:
             if client is None:
@@ -119,8 +122,10 @@ async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> Ingesti
                     records_skipped += 1
                     continue
 
-                sourceage_values = build_sourceage_values(isin=isin, report=report, detail=detail)
+                sourceage_result = build_sourceage_result(isin=isin, report=report, detail=detail)
+                sourceage_values = sourceage_result.values
                 sourceage_values["report_year"] = sourcerpt_values.get("report_year")
+                parser_diagnostics.extend(sourceage_result.diagnostics)
 
                 await _upsert(
                     session,
@@ -147,7 +152,8 @@ async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> Ingesti
             log_entry.finished_at = datetime.now(timezone.utc)
             log_entry.message = (
                 f"Processed {records_seen} FIN reports; wrote {records_written}; "
-                f"skipped {records_skipped} unchanged/older reports"
+                f"skipped {records_skipped} unchanged/older reports; "
+                f"parser diagnostics {len(parser_diagnostics)}"
             )
             await session.commit()
 
@@ -158,6 +164,7 @@ async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> Ingesti
                 records_seen=records_seen,
                 records_written=records_written,
                 records_skipped=records_skipped,
+                parser_diagnostics=[diagnostic.code for diagnostic in parser_diagnostics],
             )
             return IngestionResult(
                 isin=isin,
@@ -166,6 +173,7 @@ async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> Ingesti
                 records_seen=records_seen,
                 records_written=records_written,
                 message=log_entry.message,
+                parser_diagnostics=tuple(parser_diagnostics),
             )
 
         except Exception as exc:
@@ -205,6 +213,7 @@ async def ingest_isin(isin: str, *, client: OeKBClient | None = None) -> Ingesti
                 records_seen=records_seen,
                 records_written=records_written,
                 message=error_message,
+                parser_diagnostics=tuple(parser_diagnostics),
             )
         finally:
             if owned_client and client is not None:

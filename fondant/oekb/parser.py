@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -60,6 +61,31 @@ TAX_FIELD_MAP = {
     "StB_Substanzgewinn_steuerpflichtig_beiAusschuettunginFolgejahren": "substanzgew_folgejahre",
     "StB_Abzugsteuern_einbehalten_Kapitaleinkuenfte": "quellensteuern_einbeh",
 }
+
+TAX_VALUE_STRUCTURAL_KEYS = {
+    "steuerName",
+    "anlegerKategorie",
+    "anlegerKat",
+    "kategorie",
+    "betrag",
+    "wert",
+    "value",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ParserDiagnostic:
+    code: str
+    path: tuple[str, ...]
+    raw_key: str | None = None
+    raw_value: Any = None
+    tax_field: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SourceAgeParseResult:
+    values: dict[str, Any]
+    diagnostics: tuple[ParserDiagnostic, ...]
 
 
 def build_sourcerpt_values(
@@ -147,8 +173,17 @@ def build_sourceage_values(
     report: OeKBReportListItem,
     detail: OeKBReportDetailResponse,
 ) -> dict[str, Any]:
+    return build_sourceage_result(isin=isin, report=report, detail=detail).values
+
+
+def build_sourceage_result(
+    isin: str,
+    report: OeKBReportListItem,
+    detail: OeKBReportDetailResponse,
+) -> SourceAgeParseResult:
     parsed = ParsedTaxAge()
-    _collect_tax_values(detail.payload, parsed)
+    diagnostics: list[ParserDiagnostic] = []
+    _collect_tax_values(detail.payload, parsed, diagnostics=diagnostics)
     output = parsed.model_dump()
 
     values: dict[str, Any] = {
@@ -159,13 +194,26 @@ def build_sourceage_values(
     for metric, categories in output.items():
         for category, value in categories.items():
             values[f"{metric}_{category}"] = value
-    return values
+    return SourceAgeParseResult(values=values, diagnostics=tuple(diagnostics))
 
 
-def _collect_tax_values(node: Any, parsed: ParsedTaxAge, current_tax_field: str | None = None) -> None:
+def _collect_tax_values(
+    node: Any,
+    parsed: ParsedTaxAge,
+    current_tax_field: str | None = None,
+    *,
+    diagnostics: list[ParserDiagnostic],
+    path: tuple[str, ...] = (),
+) -> None:
     if isinstance(node, list):
-        for item in node:
-            _collect_tax_values(item, parsed, current_tax_field)
+        for index, item in enumerate(node):
+            _collect_tax_values(
+                item,
+                parsed,
+                current_tax_field,
+                diagnostics=diagnostics,
+                path=(*path, str(index)),
+            )
         return
 
     if not isinstance(node, dict):
@@ -174,7 +222,19 @@ def _collect_tax_values(node: Any, parsed: ParsedTaxAge, current_tax_field: str 
     tax_field = current_tax_field
     steuer_name = node.get("steuerName")
     if isinstance(steuer_name, str):
-        tax_field = TAX_FIELD_MAP.get(steuer_name, tax_field)
+        mapped_tax_field = TAX_FIELD_MAP.get(steuer_name)
+        if mapped_tax_field is None:
+            diagnostics.append(
+                ParserDiagnostic(
+                    code="unknown_tax_field",
+                    path=(*path, "steuerName"),
+                    raw_key="steuerName",
+                    raw_value=steuer_name,
+                    tax_field=current_tax_field,
+                )
+            )
+        else:
+            tax_field = mapped_tax_field
 
     if tax_field is not None:
         for key, value in node.items():
@@ -183,18 +243,67 @@ def _collect_tax_values(node: Any, parsed: ParsedTaxAge, current_tax_field: str 
                 dec = _to_decimal(value)
                 if dec is not None:
                     setattr(getattr(parsed, tax_field), mapped_category, dec)
+                elif _is_invalid_decimal_value(value):
+                    diagnostics.append(
+                        ParserDiagnostic(
+                            code="invalid_numeric_value",
+                            path=(*path, key),
+                            raw_key=key,
+                            raw_value=value,
+                            tax_field=tax_field,
+                        )
+                    )
+            elif key not in TAX_VALUE_STRUCTURAL_KEYS and not isinstance(value, (dict, list)):
+                diagnostics.append(
+                    ParserDiagnostic(
+                        code="unknown_category",
+                        path=(*path, key),
+                        raw_key=key,
+                        raw_value=value,
+                        tax_field=tax_field,
+                    )
+                )
 
-        category = _map_category(
-            str(node.get("anlegerKategorie") or node.get("anlegerKat") or node.get("kategorie") or "")
+        category_key = str(
+            node.get("anlegerKategorie") or node.get("anlegerKat") or node.get("kategorie") or ""
         )
-        if category is not None:
-            amount = _to_decimal(node.get("betrag") or node.get("wert") or node.get("value"))
+        category = _map_category(category_key)
+        if category is None and category_key:
+            diagnostics.append(
+                ParserDiagnostic(
+                    code="unknown_category",
+                    path=(*path, "anlegerKategorie"),
+                    raw_key="anlegerKategorie",
+                    raw_value=category_key,
+                    tax_field=tax_field,
+                )
+            )
+        elif category is not None:
+            amount_key = next((key for key in ("betrag", "wert", "value") if node.get(key)), None)
+            amount_value = node.get(amount_key) if amount_key is not None else None
+            amount = _to_decimal(amount_value)
             if amount is not None:
                 setattr(getattr(parsed, tax_field), category, amount)
+            elif _is_invalid_decimal_value(amount_value):
+                diagnostics.append(
+                    ParserDiagnostic(
+                        code="invalid_numeric_value",
+                        path=(*path, amount_key or "betrag"),
+                        raw_key=amount_key,
+                        raw_value=amount_value,
+                        tax_field=tax_field,
+                    )
+                )
 
-    for value in node.values():
+    for key, value in node.items():
         if isinstance(value, (dict, list)):
-            _collect_tax_values(value, parsed, tax_field)
+            _collect_tax_values(
+                value,
+                parsed,
+                tax_field,
+                diagnostics=diagnostics,
+                path=(*path, key),
+            )
 
 
 def _map_category(raw_key: str) -> str | None:
@@ -218,6 +327,14 @@ def _to_decimal(value: Any) -> Decimal | None:
         except InvalidOperation:
             return None
     return None
+
+
+def _is_invalid_decimal_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    return _to_decimal(value) is None
 
 
 def _extract_int(payload: Mapping[str, Any], *keys: str) -> int | None:
