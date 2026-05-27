@@ -8,6 +8,7 @@ from sqlalchemy import distinct, select
 from fondant.db.models import SOURCERPT
 from fondant.db.session import AsyncSessionFactory
 from fondant.ingestion.pipeline import IngestionResult, ingest_many
+from fondant.jobs.ingestion_summary import summarize_ingestion_batch
 from fondant.jobs.isin_storage import is_valid_isin, normalize_isin
 
 
@@ -48,21 +49,9 @@ async def _load_existing_source_isins() -> list[str]:
 
 
 def _summarize_results(results: list[IngestionResult]) -> None:
-    success = [result for result in results if result.status == "SUCCESS"]
-    failed = [result for result in results if result.status != "SUCCESS"]
-    total_seen = sum(result.records_seen for result in results)
-    total_written = sum(result.records_written for result in results)
     unchanged = sum(1 for result in results if result.records_written == 0 and result.status == "SUCCESS")
 
-    print(f"Refreshed ISINs: {len(results)}")
-    print(f"Success: {len(success)} | Failed: {len(failed)}")
-    print(f"Unchanged ISINs: {unchanged}")
-    print(f"Total FIN reports seen: {total_seen}")
-    print(f"Total reports written/updated: {total_written}")
-    if failed:
-        print("Failed ISINs:")
-        for result in failed:
-            print(f"- {result.isin}: {result.message or 'unknown error'}")
+    summarize_ingestion_batch(action_label="Refreshed", results=results, unchanged_count=unchanged)
 
 
 async def run_job(args: argparse.Namespace) -> int:
@@ -114,4 +103,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
