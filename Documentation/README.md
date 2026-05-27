@@ -12,6 +12,8 @@ This folder contains stakeholder-facing and technical documentation for the Easy
    - Where source-shaped storage, curated tax rows, reporting views, API output, and ingestion jobs each own changes.
 4. [Data and Query Guide](DATA_AND_QUERY_GUIDE.md)
    - Which data is stored, how tables relate, and practical SQL/API examples.
+5. [Field Lineage Summary](FIELD_LINEAGE_SUMMARY.md)
+   - How to use the comprehensive field table and trace fields from source to final output.
 
 ## Existing Operational Files
 
