@@ -36,13 +36,15 @@ class FakeOeKBClient:
         version: int = 1,
         age_value: str = "1.2500",
         include_parser_diagnostics: bool = False,
+        include_second_final_report: bool = False,
     ) -> None:
         self.version = version
         self.age_value = age_value
         self.include_parser_diagnostics = include_parser_diagnostics
+        self.include_second_final_report = include_second_final_report
 
     async def get_report_list(self, isin: str) -> list[OeKBReportListItem]:
-        return [
+        reports = [
             OeKBReportListItem(
                 stmId=1001,
                 isin=isin,
@@ -70,6 +72,25 @@ class FakeOeKBClient:
                 selbstnachweis="NEIN",
             ),
         ]
+        if self.include_second_final_report:
+            reports.append(
+                OeKBReportListItem(
+                    stmId=1003,
+                    isin=isin,
+                    statusCode="FIN",
+                    versionsNr=self.version,
+                    isinBez=f"{isin} Second Fund",
+                    waehrung="EUR",
+                    meldeDatum="30.07.2025",
+                    eintragezeit="2025-09-30T09:16:24.563",
+                    gjBeginn="2025-04-01T00:00:00.000",
+                    gjEnde="2026-03-31T00:00:00.000",
+                    jahresmeldung="JA",
+                    ausschuettungsmeldung="NEIN",
+                    selbstnachweis="NEIN",
+                )
+            )
+        return reports
 
     async def get_report_detail(self, stm_id: int) -> OeKBReportDetailResponse:
         payload = {
@@ -206,6 +227,42 @@ async def test_ingest_isin_updates_same_version_when_payload_changes(
     assert sourceage_row.ag_ertraege_pv_mit == Decimal("2.5000")
     assert taxdat_row is not None
     assert taxdat_row.amount == Decimal("2.5000")
+
+
+@pytest.mark.asyncio
+async def test_ingest_isin_persists_all_reports_returned_by_paginated_client(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pipeline, "AsyncSessionFactory", sqlite_session_factory)
+
+    isin = "IE00BMTX1Y45"
+    result = await pipeline.ingest_isin(
+        isin,
+        client=FakeOeKBClient(version=1, include_second_final_report=True),
+    )
+
+    assert result.status == "SUCCESS"
+    assert result.records_seen == 2
+    assert result.records_written == 2
+
+    async with sqlite_session_factory() as session:
+        sourcerpt_ids = [
+            stm_id
+            for stm_id, in (
+                await session.execute(
+                    select(SOURCERPT.stm_id).where(SOURCERPT.isin == isin).order_by(SOURCERPT.stm_id)
+                )
+            ).all()
+        ]
+        taxrpt_count = await session.scalar(select(func.count()).select_from(TAXRPT))
+        sourceage_count = await session.scalar(select(func.count()).select_from(SOURCEAGE))
+        sourceraw_count = await session.scalar(select(func.count()).select_from(SOURCERAW))
+
+    assert sourcerpt_ids == [1001, 1002, 1003]
+    assert taxrpt_count == 2
+    assert sourceage_count == 2
+    assert sourceraw_count == 2
 
 
 @pytest.mark.asyncio

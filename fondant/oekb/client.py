@@ -72,20 +72,28 @@ class OeKBClient:
         sort_field: str = "isinBez",
         sort_order: int = 1,
     ) -> list[OeKBReportListItem]:
-        payload = await self._get(
-            "/steuerMeldung/liste",
-            params={
-                "offset": offset,
-                "limit": limit,
-                "ctxListArt": ctx_list_art,
-                "ctxEqIsin": isin,
-                "meldgNurGuelt": str(meldg_nur_guelt).lower(),
-                "meldgJahresM": str(meldg_jahres_m).lower(),
-                "sortField": sort_field,
-                "sortOrder": sort_order,
-            },
-        )
-        return [OeKBReportListItem.model_validate(item) for item in _extract_list_payload(payload)]
+        reports: list[OeKBReportListItem] = []
+        next_offset: int | None = offset
+
+        while next_offset is not None:
+            payload = await self._get(
+                "/steuerMeldung/liste",
+                params={
+                    "offset": next_offset,
+                    "limit": limit,
+                    "ctxListArt": ctx_list_art,
+                    "ctxEqIsin": isin,
+                    "meldgNurGuelt": str(meldg_nur_guelt).lower(),
+                    "meldgJahresM": str(meldg_jahres_m).lower(),
+                    "sortField": sort_field,
+                    "sortOrder": sort_order,
+                },
+            )
+            page = _extract_list_page(payload)
+            reports.extend(OeKBReportListItem.model_validate(item) for item in page.items)
+            next_offset = page.next_offset(current_offset=next_offset, requested_limit=limit, collected=len(reports))
+
+        return reports
 
     async def get_report_detail(self, stm_id: int) -> OeKBReportDetailResponse:
         payload = await self._get(f"/steuerMeldung/stmId/{stm_id}/ertrStBeh")
@@ -100,6 +108,60 @@ class OeKBClient:
                 "payload": payload,
             }
         )
+
+
+class _ReportListPage:
+    def __init__(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        total_elements: int | None = None,
+        total_pages: int | None = None,
+        page_number: int | None = None,
+        page_size: int | None = None,
+    ) -> None:
+        self.items = items
+        self.total_elements = total_elements
+        self.total_pages = total_pages
+        self.page_number = page_number
+        self.page_size = page_size
+
+    def next_offset(self, *, current_offset: int, requested_limit: int, collected: int) -> int | None:
+        if not self.items:
+            return None
+
+        if self.total_elements is not None:
+            return current_offset + requested_limit if collected < self.total_elements else None
+
+        if self.total_pages is not None and self.page_number is not None:
+            next_page_number = self.page_number + 1
+            return current_offset + requested_limit if next_page_number < self.total_pages else None
+
+        if len(self.items) < requested_limit:
+            return None
+
+        return None
+
+
+def _extract_list_page(payload: Any) -> _ReportListPage:
+    if isinstance(payload, list):
+        return _ReportListPage(items=[item for item in payload if isinstance(item, dict)])
+
+    if isinstance(payload, dict):
+        items = _extract_list_payload(payload)
+        return _ReportListPage(
+            items=items,
+            total_elements=_int_or_none(payload.get("totalElements")),
+            total_pages=_int_or_none(payload.get("totalPages")),
+            page_number=_int_or_none(payload.get("number")),
+            page_size=_int_or_none(payload.get("size")),
+        )
+
+    return _ReportListPage(items=[])
+
+
+def _int_or_none(value: Any) -> int | None:
+    return value if isinstance(value, int) else None
 
 
 def _extract_list_payload(payload: Any) -> list[dict[str, Any]]:
