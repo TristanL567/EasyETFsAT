@@ -149,6 +149,7 @@ def test_migrations_sqlite_fresh_install(tmp_path: Path) -> None:
     _assert_rebuilt_architecture(database_url)
 
 
+@pytest.mark.postgres
 def test_migrations_postgres_fresh_install(postgres_url: str) -> None:
     _run_alembic_upgrade(postgres_url)
     _assert_rebuilt_architecture(postgres_url)

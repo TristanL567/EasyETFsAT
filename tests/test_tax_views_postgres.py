@@ -167,6 +167,7 @@ def _rows_by_okbidn(connection: sa.Connection, view_name: str) -> dict[int, sa.R
     }
 
 
+@pytest.mark.postgres
 def test_tax_views_apply_current_pivot_and_fx_semantics_on_postgres(postgres_url: str) -> None:
     _run_alembic_upgrade(postgres_url)
     engine = create_engine(postgres_url, future=True)

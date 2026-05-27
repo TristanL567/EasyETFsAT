@@ -43,6 +43,9 @@ include = ["fondant*"]
 addopts = "-q"
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "postgres: Docker-backed PostgreSQL migration and reporting-view verification gate",
+]
 
 [tool.ruff]
 line-length = 100
