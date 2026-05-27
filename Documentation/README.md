@@ -8,7 +8,9 @@ This folder contains stakeholder-facing and technical documentation for the Easy
    - Short explanation of what the project does, who can use it, and how to position it.
 2. [Technical Architecture](TECHNICAL_ARCHITECTURE.md)
    - How the backend, ingestion jobs, API, database, migrations, and tests work.
-3. [Data and Query Guide](DATA_AND_QUERY_GUIDE.md)
+3. [Maintainer Layer Guide](MAINTAINER_LAYER_GUIDE.md)
+   - Where source-shaped storage, curated tax rows, reporting views, API output, and ingestion jobs each own changes.
+4. [Data and Query Guide](DATA_AND_QUERY_GUIDE.md)
    - Which data is stored, how tables relate, and practical SQL/API examples.
 
 ## Existing Operational Files
