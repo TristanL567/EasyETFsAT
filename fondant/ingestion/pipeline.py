@@ -29,39 +29,19 @@ from fondant.db.session import AsyncSessionFactory
 from fondant.oekb.client import OeKBClient
 from fondant.oekb.models import OeKBReportListItem
 from fondant.oekb.parser import (
-    CATEGORY_CODE_BY_KEY,
-    METRIC_CODE_BY_KEY,
     ParserDiagnostic,
     build_sourceage_result,
     build_sourceraw_values,
     build_sourcerpt_values,
 )
+from fondant.tax_registry import (
+    CATEGORY_CODE_BY_KEY,
+    CATEGORY_DICTIONARY,
+    LINE_DICTIONARY,
+    METRIC_CODE_BY_KEY,
+)
 
 logger = structlog.get_logger(__name__)
-
-LINE_DICTIONARY: list[dict[str, object]] = [
-    {"line_code": "K40", "metric_key": "steuerpflichtige_einkuenfte", "name_de": "Steuerpflichtige Einkuenfte", "name_en": "taxable_income", "line_order": 5},
-    {"line_code": "K11", "metric_key": "ag_ertraege", "name_de": "AGErtraege", "name_en": "distributed_income", "line_order": 10},
-    {"line_code": "K12", "metric_key": "korrekturbetrag_saldiert", "name_de": "Korrekturbetrag saldiert", "name_en": "net_correction_amount", "line_order": 20},
-    {"line_code": "K81", "metric_key": "kest_total", "name_de": "KESt gesamt", "name_en": "withholding_tax_total", "line_order": 30},
-    {"line_code": "K82", "metric_key": "kest_substanzgewinne", "name_de": "KESt Substanzgewinne", "name_en": "withholding_tax_substance_gains", "line_order": 40},
-    {"line_code": "K10", "metric_key": "substanzgewinne_kestpfl", "name_de": "Substanzgewinne KESt-pflichtig", "name_en": "taxable_substance_gains", "line_order": 50},
-    {"line_code": "K55", "metric_key": "fondsergebnis_nichtausg", "name_de": "Fondsergebnis nicht ausgeschuettet", "name_en": "undistributed_fund_result", "line_order": 60},
-    {"line_code": "K61", "metric_key": "korrekturbetrag_age_ak", "name_de": "Korrekturbetrag Anschaffungskosten", "name_en": "cost_basis_adjustment", "line_order": 70},
-    {"line_code": "K62", "metric_key": "korrekturbetrag_aussch_ak", "name_de": "Korrekturbetrag Ausschuettung Anschaffungskosten", "name_en": "distribution_cost_basis_adjustment", "line_order": 75},
-    {"line_code": "K36", "metric_key": "substanzgew_folgejahre", "name_de": "Substanzgewinn Folgejahre", "name_en": "taxable_substance_gain_followup_years", "line_order": 80},
-    {"line_code": "K21", "metric_key": "quellensteuern_einbeh", "name_de": "Quellensteuern einbehalten", "name_en": "withholding_taxes_retained", "line_order": 90},
-]
-
-CATEGORY_DICTIONARY: list[dict[str, object]] = [
-    {"category_code": "PVM", "category_key": "pv_mit", "name_de": "Privatvermoegen mit Option", "name_en": "private_assets_with_option", "category_order": 10},
-    {"category_code": "PVO", "category_key": "pv_ohne", "name_de": "Privatvermoegen ohne Option", "name_en": "private_assets_without_option", "category_order": 20},
-    {"category_code": "BVM", "category_key": "bv_mit", "name_de": "Betriebsvermoegen mit Option", "name_en": "business_assets_with_option", "category_order": 30},
-    {"category_code": "BVO", "category_key": "bv_ohne", "name_de": "Betriebsvermoegen ohne Option", "name_en": "business_assets_without_option", "category_order": 40},
-    {"category_code": "BVJ", "category_key": "bv_jur", "name_de": "Betriebsvermoegen juristisch", "name_en": "business_assets_legal_entities", "category_order": 50},
-    {"category_code": "STF", "category_key": "stiftung", "name_de": "Stiftung", "name_en": "foundation", "category_order": 60},
-]
-
 
 @dataclass(slots=True)
 class IngestionResult:

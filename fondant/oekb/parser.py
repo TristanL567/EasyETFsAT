@@ -6,61 +6,13 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from fondant import tax_registry
 from fondant.oekb.models import OeKBReportDetailResponse, OeKBReportListItem, ParsedTaxAge
 
-CATEGORY_KEY_MAP = {
-    "pvmitoption4": "pv_mit",
-    "pv_mit": "pv_mit",
-    "pvm": "pv_mit",
-    "pvohneoption4": "pv_ohne",
-    "pv_ohne": "pv_ohne",
-    "bvmitoption4": "bv_mit",
-    "bv_mit": "bv_mit",
-    "bvohneoption4": "bv_ohne",
-    "bv_ohne": "bv_ohne",
-    "bvjurperson4": "bv_jur",
-    "bvjur": "bv_jur",
-    "bv_jur": "bv_jur",
-    "stiftung4": "stiftung",
-    "stiftung": "stiftung",
-}
-
-METRIC_CODE_BY_KEY = {
-    "steuerpflichtige_einkuenfte": "K40",
-    "ag_ertraege": "K11",
-    "korrekturbetrag_saldiert": "K12",
-    "kest_total": "K81",
-    "kest_substanzgewinne": "K82",
-    "substanzgewinne_kestpfl": "K10",
-    "fondsergebnis_nichtausg": "K55",
-    "korrekturbetrag_age_ak": "K61",
-    "korrekturbetrag_aussch_ak": "K62",
-    "substanzgew_folgejahre": "K36",
-    "quellensteuern_einbeh": "K21",
-}
-
-CATEGORY_CODE_BY_KEY = {
-    "pv_mit": "PVM",
-    "pv_ohne": "PVO",
-    "bv_mit": "BVM",
-    "bv_ohne": "BVO",
-    "bv_jur": "BVJ",
-    "stiftung": "STF",
-}
-
-TAX_FIELD_MAP = {
-    "StB_Einkuenfte_steuerpflichtig": "steuerpflichtige_einkuenfte",
-    "StB_E1KV_AGErtraege": "ag_ertraege",
-    "StB_E1KV_Korrekturbetrag_saldiert": "korrekturbetrag_saldiert",
-    "StB_KESt": "kest_total",
-    "StB_KeSt_Substanzgewinne_sonstige_steuerpflichtig_2": "kest_substanzgewinne",
-    "StB_Substanzgewinne_KEStpflichtig": "substanzgewinne_kestpfl",
-    "StB_Fondsergebnis_nichtausgeschuettet": "fondsergebnis_nichtausg",
-    "StB_Korrekturbetrag_AGErtrag_Anschaffungskosten": "korrekturbetrag_age_ak",
-    "StB_Korrekturbetrag_Ausschuettung_Anschaffungskosten": "korrekturbetrag_aussch_ak",
-    "StB_Substanzgewinn_steuerpflichtig_beiAusschuettunginFolgejahren": "substanzgew_folgejahre",
-    "StB_Abzugsteuern_einbehalten_Kapitaleinkuenfte": "quellensteuern_einbeh",
-}
+CATEGORY_CODE_BY_KEY = tax_registry.CATEGORY_CODE_BY_KEY
+CATEGORY_KEY_MAP = tax_registry.CATEGORY_KEY_MAP
+METRIC_CODE_BY_KEY = tax_registry.METRIC_CODE_BY_KEY
+TAX_FIELD_MAP = tax_registry.TAX_FIELD_MAP
 
 TAX_VALUE_STRUCTURAL_KEYS = {
     "steuerName",

@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, text
 
 from alembic import command
 from fondant.config import get_settings
+from fondant.tax_registry import TAX_CATEGORIES
 
 
 @contextmanager
@@ -85,27 +86,14 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert "V2_TAXDATEUR" in view_names
 
     view_cols = {column["name"] for column in inspector.get_columns("V1_TAXDATPRE")}
+    registry_view_columns = {
+        f"{line_code}{category.view_alias}"
+        for line_code in ("K61", "K62", "K40")
+        for category in TAX_CATEGORIES
+    }
     assert {
         "FNDCCY",
-        "K61PVM",
-        "K61PVO",
-        "K61BVM",
-        "K61BVO",
-        "K61BVJ",
-        "K61STI",
-        "K62PVM",
-        "K62PVO",
-        "K62BVM",
-        "K62BVO",
-        "K62BVJ",
-        "K62STI",
-        "K40PVM",
-        "K40PVO",
-        "K40BVM",
-        "K40BVO",
-        "K40BVJ",
-        "K40STI",
-    }.issubset(view_cols)
+    }.union(registry_view_columns).issubset(view_cols)
     assert not {"AGEPVM", "AGEPVO", "CORAMTPVM", "CORAMTPVO"}.intersection(view_cols)
 
     view2_cols = {column["name"] for column in inspector.get_columns("V2_TAXDATEUR")}
