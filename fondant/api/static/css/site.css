@@ -189,7 +189,8 @@ h1 {
   color: var(--muted);
 }
 
-.business-query-form {
+.business-query-form,
+.search-form {
   display: grid;
   gap: 0.75rem;
   max-width: 42rem;
@@ -200,13 +201,15 @@ h1 {
   background: var(--surface);
 }
 
-.business-query-form label {
+.business-query-form label,
+.search-form label {
   font-weight: 700;
 }
 
 .business-query-form input,
 .business-query-form textarea,
-.business-query-form select {
+.business-query-form select,
+.search-form input {
   width: 100%;
   box-sizing: border-box;
   min-height: 2.75rem;
@@ -218,12 +221,20 @@ h1 {
   font: inherit;
 }
 
-.business-query-form [aria-invalid="true"] {
+.business-query-form [aria-invalid="true"],
+.search-form [aria-invalid="true"] {
   border-color: #8a1f11;
 }
 
 .business-query-form textarea {
   resize: vertical;
+}
+
+.search-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
 }
 
 .form-note {
@@ -244,6 +255,11 @@ h1 {
   border: 1px solid #93c5bd;
   border-radius: 8px;
   background: #f0faf8;
+}
+
+.search-results {
+  max-width: 58rem;
+  margin-top: 1rem;
 }
 
 .result-panel h2 {
@@ -360,7 +376,8 @@ h1 {
 .login-form input:focus-visible,
 .business-query-form input:focus-visible,
 .business-query-form textarea:focus-visible,
-.business-query-form select:focus-visible {
+.business-query-form select:focus-visible,
+.search-form input:focus-visible {
   outline: 3px solid #f0b429;
   outline-offset: 3px;
 }
@@ -431,5 +448,9 @@ h1 {
   .result-panel dl div {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .search-controls {
+    grid-template-columns: 1fr;
   }
 }

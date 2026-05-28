@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, execute_business_query
 from fondant.config import Settings, get_settings
 from fondant.db.session import get_session
+from fondant.search import FundSearchResult, has_available_fund_data, search_available_funds
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 
@@ -49,7 +50,7 @@ APP_SECTIONS = {
         "label": "Search",
         "path": "/app/search",
         "title": "Search",
-        "summary": "Placeholder workspace for future portfolio and report search.",
+        "summary": "Discover available fund tax data by ISIN or security name.",
     },
     "documentation": {
         "label": "Documentation",
@@ -67,6 +68,14 @@ def _empty_business_query_form() -> dict[str, str]:
         "legal_entity_type": LEGAL_ENTITY_TYPES[0],
         "amount": "",
     }
+
+
+def _prefilled_business_query_form(isins: str) -> dict[str, str]:
+    form = _empty_business_query_form()
+    normalized_isins = _normalize_isin_input(isins)
+    if normalized_isins:
+        form["isins"] = "\n".join(normalized_isins)
+    return form
 
 
 def _normalize_isin_input(value: str) -> list[str]:
@@ -299,6 +308,10 @@ def _render_app_shell(
     business_query_form: dict[str, str] | None = None,
     business_query_errors: dict[str, str] | None = None,
     business_query_result: BusinessQueryResult | None = None,
+    search_query: str = "",
+    search_results: tuple[FundSearchResult, ...] = (),
+    search_submitted: bool = False,
+    search_database_has_records: bool = True,
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
@@ -316,6 +329,10 @@ def _render_app_shell(
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
             "business_query_result": business_query_result,
+            "search_query": search_query,
+            "search_results": search_results,
+            "search_submitted": search_submitted,
+            "search_database_has_records": search_database_has_records,
         },
     )
 
@@ -326,8 +343,12 @@ async def app_home(request: Request) -> HTMLResponse:
 
 
 @router.get("/app/business-query", response_class=HTMLResponse)
-async def app_business_query(request: Request) -> HTMLResponse:
-    return _render_app_shell(request, "business-query")
+async def app_business_query(request: Request, isins: str = "") -> HTMLResponse:
+    return _render_app_shell(
+        request,
+        "business-query",
+        business_query_form=_prefilled_business_query_form(isins),
+    )
 
 
 @router.post("/app/business-query", response_class=HTMLResponse)
@@ -386,8 +407,29 @@ async def export_business_query(
 
 
 @router.get("/app/search", response_class=HTMLResponse)
-async def app_search(request: Request) -> HTMLResponse:
-    return _render_app_shell(request, "search")
+async def app_search(request: Request, q: str = "") -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    search_query = q.strip()
+    search_results: tuple[FundSearchResult, ...] = ()
+    database_has_records = False
+
+    async for session in get_session():
+        database_has_records = await has_available_fund_data(session)
+        if search_query and database_has_records:
+            search_results = await search_available_funds(session, search_query)
+        break
+
+    return _render_app_shell(
+        request,
+        "search",
+        search_query=search_query,
+        search_results=search_results,
+        search_submitted=bool(search_query),
+        search_database_has_records=database_has_records,
+    )
 
 
 @router.get("/app/documentation", response_class=HTMLResponse)

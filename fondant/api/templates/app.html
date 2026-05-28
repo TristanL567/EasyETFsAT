@@ -155,6 +155,59 @@
                 Run query
               </button>
             </form>
+            {% elif section.label == "Search" %}
+            <form class="search-form" method="get" action="/app/search" aria-label="Fund data search">
+              <label for="search-query">Search by ISIN or fund/security name</label>
+              <div class="search-controls">
+                <input
+                  id="search-query"
+                  name="q"
+                  type="search"
+                  autocomplete="off"
+                  placeholder="IE00BMTX1Y45 or fund name"
+                  value="{{ search_query }}"
+                >
+                <button class="primary-action" type="submit">Search</button>
+              </div>
+            </form>
+
+            <div class="result-panel search-results" aria-live="polite">
+              <h2>Available fund data</h2>
+              {% if not search_database_has_records %}
+              <p class="empty-state">No fund data is available in the database yet.</p>
+              {% elif search_submitted and not search_results %}
+              <p class="empty-state">No matching fund data found.</p>
+              {% elif not search_submitted %}
+              <p class="empty-state">Enter an ISIN or fund/security name to search available records.</p>
+              {% else %}
+              <div class="result-table-wrap">
+                <table class="result-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">ISIN</th>
+                      <th scope="col">Fund/security name</th>
+                      <th scope="col">Currency</th>
+                      <th scope="col">Available tax years</th>
+                      <th scope="col">Report count</th>
+                      <th scope="col">BusinessQuery</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in search_results %}
+                    <tr>
+                      <td>{{ row.isin }}</td>
+                      <td>{{ row.name }}</td>
+                      <td>{{ row.currency if row.currency is not none else "-" }}</td>
+                      <td>{{ row.available_tax_years | join(", ") if row.available_tax_years else "-" }}</td>
+                      <td>{{ row.report_count }}</td>
+                      <td><a href="/app/business-query?isins={{ row.isin }}">Use ISIN</a></td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+            </div>
             {% else %}
             <div class="placeholder-panel">
               <h2>{{ section.label }} placeholder</h2>

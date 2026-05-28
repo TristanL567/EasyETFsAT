@@ -9,6 +9,7 @@ import pytest
 from fondant.api.main import create_app
 from fondant.api.routes import web as web_routes
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, BusinessQueryResultRow
+from fondant.search import FundSearchResult
 
 
 @pytest.fixture
@@ -189,6 +190,23 @@ async def test_business_query_form_renders_for_authenticated_users(
             '<option value="Stiftung">Stiftung</option>'
         ) in normalized_html
         assert normalized_html.count("<option") == 3
+
+
+@pytest.mark.asyncio
+async def test_business_query_get_prefills_selected_isin_from_search_link(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/business-query", params={"isins": "ie00bmtx1y45"})
+
+    assert response.status_code == 200
+    assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
+    assert ">IE00BMTX1Y45</textarea>" in response.text
 
 
 @pytest.mark.asyncio
@@ -534,7 +552,153 @@ async def test_business_query_invalid_export_preserves_values_and_shows_errors(
 
 
 @pytest.mark.asyncio
-async def test_non_business_query_placeholder_pages_render_for_authenticated_users(
+async def test_search_form_renders_for_authenticated_users(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_has_available_fund_data(session: object) -> bool:
+        return True
+
+    async def fail_if_called(session: object, query: str) -> tuple[FundSearchResult, ...]:
+        raise AssertionError("initial search page must not search without a query")
+
+    monkeypatch.setattr(web_routes, "has_available_fund_data", fake_has_available_fund_data)
+    monkeypatch.setattr(web_routes, "search_available_funds", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/search")
+
+    assert response.status_code == 200
+    assert "<title>Search - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Search</h1>' in response.text
+    assert "Discover available fund tax data by ISIN or security name." in response.text
+    assert '<form class="search-form" method="get" action="/app/search"' in response.text
+    assert 'name="q"' in response.text
+    assert "Enter an ISIN or fund/security name to search available records." in response.text
+
+
+@pytest.mark.asyncio
+async def test_authenticated_search_with_mocked_data_renders_matching_rows(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    search_calls = []
+
+    async def fake_has_available_fund_data(session: object) -> bool:
+        return True
+
+    async def fake_search_available_funds(
+        session: object,
+        query: str,
+    ) -> tuple[FundSearchResult, ...]:
+        search_calls.append((session, query))
+        return (
+            FundSearchResult(
+                isin="IE00BMTX1Y45",
+                name="Vanguard Example UCITS ETF",
+                currency="EUR",
+                available_tax_years=(2024, 2025),
+                report_count=3,
+            ),
+        )
+
+    async def fail_ingestion(*args: object, **kwargs: object) -> object:
+        raise AssertionError("search must not trigger ingestion")
+
+    from fondant.ingestion import pipeline
+
+    monkeypatch.setattr(web_routes, "has_available_fund_data", fake_has_available_fund_data)
+    monkeypatch.setattr(web_routes, "search_available_funds", fake_search_available_funds)
+    monkeypatch.setattr(pipeline, "ingest_isin", fail_ingestion)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/search", params={"q": "vanguard"})
+
+    assert response.status_code == 200
+    assert 'value="vanguard"' in response.text
+    assert "<th scope=\"col\">ISIN</th>" in response.text
+    assert "<th scope=\"col\">Fund/security name</th>" in response.text
+    assert "<th scope=\"col\">Currency</th>" in response.text
+    assert "<th scope=\"col\">Available tax years</th>" in response.text
+    assert "<th scope=\"col\">Report count</th>" in response.text
+    assert "<td>IE00BMTX1Y45</td>" in response.text
+    assert "<td>Vanguard Example UCITS ETF</td>" in response.text
+    assert "<td>EUR</td>" in response.text
+    assert "<td>2024, 2025</td>" in response.text
+    assert "<td>3</td>" in response.text
+    assert 'href="/app/business-query?isins=IE00BMTX1Y45"' in response.text
+    assert len(search_calls) == 1
+    assert search_calls[0][1] == "vanguard"
+
+
+@pytest.mark.asyncio
+async def test_authenticated_search_renders_no_results_state(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_has_available_fund_data(session: object) -> bool:
+        return True
+
+    async def fake_search_available_funds(
+        session: object,
+        query: str,
+    ) -> tuple[FundSearchResult, ...]:
+        return ()
+
+    monkeypatch.setattr(web_routes, "has_available_fund_data", fake_has_available_fund_data)
+    monkeypatch.setattr(web_routes, "search_available_funds", fake_search_available_funds)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/search", params={"q": "missing"})
+
+    assert response.status_code == 200
+    assert "No matching fund data found." in response.text
+    assert 'value="missing"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_search_renders_empty_database_state_without_searching(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_has_available_fund_data(session: object) -> bool:
+        return False
+
+    async def fail_if_called(session: object, query: str) -> tuple[FundSearchResult, ...]:
+        raise AssertionError("empty database state must not run a search")
+
+    monkeypatch.setattr(web_routes, "has_available_fund_data", fake_has_available_fund_data)
+    monkeypatch.setattr(web_routes, "search_available_funds", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/search", params={"q": "IE00BMTX1Y45"})
+
+    assert response.status_code == 200
+    assert "No fund data is available in the database yet." in response.text
+
+
+@pytest.mark.asyncio
+async def test_documentation_placeholder_page_renders_for_authenticated_users(
     web_client: httpx.AsyncClient,
 ) -> None:
     login_response = await web_client.post(
@@ -543,25 +707,12 @@ async def test_non_business_query_placeholder_pages_render_for_authenticated_use
     )
     assert login_response.status_code == 303
 
-    cases = [
-        (
-            "/app/search",
-            "Search",
-            "Placeholder workspace for future portfolio and report search.",
-        ),
-        (
-            "/app/documentation",
-            "Documentation",
-            "Placeholder workspace for future user documentation.",
-        ),
-    ]
-    for path, title, summary in cases:
-        response = await web_client.get(path)
+    response = await web_client.get("/app/documentation")
 
-        assert response.status_code == 200
-        assert f"<title>{title} - EasyETFsAT</title>" in response.text
-        assert f'<h1 id="app-title">{title}</h1>' in response.text
-        assert summary in response.text
+    assert response.status_code == 200
+    assert "<title>Documentation - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Documentation</h1>' in response.text
+    assert "Placeholder workspace for future user documentation." in response.text
 
 
 @pytest.mark.asyncio
