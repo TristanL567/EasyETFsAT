@@ -1,15 +1,17 @@
 import base64
+import csv
 import hashlib
 import hmac
 import json
 import re
 import time
 from decimal import Decimal, InvalidOperation
+from io import StringIO
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +26,17 @@ router = APIRouter(include_in_schema=False)
 
 LEGAL_ENTITY_TYPES = ("natural person", "business", "Stiftung")
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+BUSINESS_QUERY_CSV_HEADERS = (
+    "query_name",
+    "isin",
+    "tax_year",
+    "tax_field_code",
+    "tax_field_label",
+    "legal_entity_category",
+    "base_eur_value",
+    "amount_multiplier",
+    "calculated_eur_value",
+)
 
 APP_SECTIONS = {
     "business-query": {
@@ -107,6 +120,54 @@ def _validate_business_query_form(
         "legal_entity_type": legal_entity_type,
         "amount": str(amount),
     }
+
+
+def _business_query_form_values(form: Any) -> dict[str, str]:
+    return {
+        "query_name": str(form.get("query_name", "")),
+        "isins": str(form.get("isins", "")),
+        "legal_entity_type": str(form.get("legal_entity_type", "")),
+        "amount": str(form.get("amount", "")),
+    }
+
+
+def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, str]:
+    return {
+        "query_name": str(preview["query_name"]),
+        "isins": str(preview["isins_text"]),
+        "legal_entity_type": str(preview["legal_entity_type"]),
+        "amount": str(preview["amount"]),
+    }
+
+
+def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQueryInput:
+    return BusinessQueryInput(
+        query_name=str(preview["query_name"]),
+        isins=tuple(cast(list[str], preview["isins"])),
+        legal_entity_type=str(preview["legal_entity_type"]),
+        amount_multiplier=Decimal(str(preview["amount"])),
+    )
+
+
+def _business_query_result_to_csv(result: BusinessQueryResult) -> str:
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=BUSINESS_QUERY_CSV_HEADERS, lineterminator="\n")
+    writer.writeheader()
+    for row in result.rows:
+        writer.writerow(
+            {
+                "query_name": row.query_name,
+                "isin": row.isin,
+                "tax_year": row.tax_year,
+                "tax_field_code": row.tax_field_code,
+                "tax_field_label": row.tax_field_label,
+                "legal_entity_category": row.legal_entity_category,
+                "base_eur_value": row.base_eur_value,
+                "amount_multiplier": row.amount_multiplier,
+                "calculated_eur_value": row.calculated_eur_value,
+            }
+        )
+    return output.getvalue()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -279,29 +340,11 @@ async def submit_business_query(
         return RedirectResponse(url="/login", status_code=303)
 
     form = await request.form()
-    form_values = {
-        "query_name": str(form.get("query_name", "")),
-        "isins": str(form.get("isins", "")),
-        "legal_entity_type": str(form.get("legal_entity_type", "")),
-        "amount": str(form.get("amount", "")),
-    }
+    form_values = _business_query_form_values(form)
     errors, preview = _validate_business_query_form(form_values)
     if preview is not None:
-        form_values = {
-            "query_name": str(preview["query_name"]),
-            "isins": str(preview["isins_text"]),
-            "legal_entity_type": str(preview["legal_entity_type"]),
-            "amount": str(preview["amount"]),
-        }
-        result = await execute_business_query(
-            session,
-            BusinessQueryInput(
-                query_name=form_values["query_name"],
-                isins=tuple(cast(list[str], preview["isins"])),
-                legal_entity_type=form_values["legal_entity_type"],
-                amount_multiplier=Decimal(form_values["amount"]),
-            ),
-        )
+        form_values = _normalized_business_query_form(preview)
+        result = await execute_business_query(session, _business_query_input_from_preview(preview))
     else:
         result = None
 
@@ -311,6 +354,34 @@ async def submit_business_query(
         business_query_form=form_values,
         business_query_errors=errors,
         business_query_result=result,
+    )
+
+
+@router.post("/app/business-query/export")
+async def export_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    form_values = _business_query_form_values(form)
+    errors, preview = _validate_business_query_form(form_values)
+    if preview is None:
+        return _render_app_shell(
+            request,
+            "business-query",
+            business_query_form=form_values,
+            business_query_errors=errors,
+        )
+
+    result = await execute_business_query(session, _business_query_input_from_preview(preview))
+    return Response(
+        content=_business_query_result_to_csv(result),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="business-query.csv"'},
     )
 
 
