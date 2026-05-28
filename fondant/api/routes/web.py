@@ -16,6 +16,27 @@ TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 router = APIRouter(include_in_schema=False)
 
+APP_SECTIONS = {
+    "business-query": {
+        "label": "BusinessQuery",
+        "path": "/app/business-query",
+        "title": "BusinessQuery",
+        "summary": "Placeholder workspace for future query execution.",
+    },
+    "search": {
+        "label": "Search",
+        "path": "/app/search",
+        "title": "Search",
+        "summary": "Placeholder workspace for future portfolio and report search.",
+    },
+    "documentation": {
+        "label": "Documentation",
+        "path": "/app/documentation",
+        "title": "Documentation",
+        "summary": "Placeholder workspace for future user documentation.",
+    },
+}
+
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
@@ -139,13 +160,38 @@ async def logout() -> RedirectResponse:
     return response
 
 
-@router.get("/app", response_class=HTMLResponse)
-async def app_home(request: Request) -> HTMLResponse:
+def _render_app_shell(request: Request, section_key: str) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
         return RedirectResponse(url="/login", status_code=303)
+    section = APP_SECTIONS[section_key]
     return templates.TemplateResponse(
         request=request,
         name="app.html",
-        context={"page_title": "App - EasyETFsAT", "username": username},
+        context={
+            "page_title": f"{section['title']} - EasyETFsAT",
+            "username": username,
+            "section": section,
+            "sections": APP_SECTIONS.values(),
+        },
     )
+
+
+@router.get("/app", response_class=HTMLResponse)
+async def app_home(request: Request) -> HTMLResponse:
+    return _render_app_shell(request, "business-query")
+
+
+@router.get("/app/business-query", response_class=HTMLResponse)
+async def app_business_query(request: Request) -> HTMLResponse:
+    return _render_app_shell(request, "business-query")
+
+
+@router.get("/app/search", response_class=HTMLResponse)
+async def app_search(request: Request) -> HTMLResponse:
+    return _render_app_shell(request, "search")
+
+
+@router.get("/app/documentation", response_class=HTMLResponse)
+async def app_documentation(request: Request) -> HTMLResponse:
+    return _render_app_shell(request, "documentation")

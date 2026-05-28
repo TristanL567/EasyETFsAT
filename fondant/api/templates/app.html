@@ -7,21 +7,40 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/site.css') }}">
   </head>
   <body>
-    <div class="page-shell">
-      <header class="site-header" aria-label="App navigation">
+    <div class="portal-shell">
+      <aside class="portal-sidebar" aria-label="Primary sections">
         <a class="brand" href="/app">EasyETFsAT</a>
-        <form method="post" action="/logout">
-          <button class="login-link" type="submit">Log out</button>
-        </form>
-      </header>
+        <nav class="portal-nav">
+          {% for item in sections %}
+          <a
+            class="portal-nav-link{% if item.path == section.path %} active{% endif %}"
+            href="{{ item.path }}"
+            {% if item.path == section.path %}aria-current="page"{% endif %}
+          >{{ item.label }}</a>
+          {% endfor %}
+        </nav>
+      </aside>
 
-      <main class="app-placeholder">
-        <section class="intro" aria-labelledby="app-title">
-          <p class="eyebrow">Authenticated workspace</p>
-          <h1 id="app-title">EasyETFsAT app</h1>
-          <p class="summary">You are logged in as {{ username }}.</p>
-        </section>
-      </main>
+      <div class="portal-main">
+        <header class="portal-topbar">
+          <p class="user-status">Signed in as <strong>{{ username }}</strong></p>
+          <form method="post" action="/logout">
+            <button class="login-link" type="submit">Log out</button>
+          </form>
+        </header>
+
+        <main class="portal-content">
+          <section class="workspace-panel" aria-labelledby="app-title">
+            <p class="eyebrow">Authenticated workspace</p>
+            <h1 id="app-title">{{ section.title }}</h1>
+            <p class="summary">{{ section.summary }}</p>
+            <div class="placeholder-panel">
+              <h2>{{ section.label }} placeholder</h2>
+              <p>This area is reserved for a later ticket.</p>
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
   </body>
 </html>

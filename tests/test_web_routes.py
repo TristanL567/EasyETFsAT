@@ -116,10 +116,11 @@ async def test_login_fails_generically_without_session_cookie(
 async def test_app_redirects_unauthenticated_users_to_login(
     web_client: httpx.AsyncClient,
 ) -> None:
-    response = await web_client.get("/app")
+    for path in ["/app", "/app/business-query", "/app/search", "/app/documentation"]:
+        response = await web_client.get(path)
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/login"
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
 
 
 @pytest.mark.asyncio
@@ -133,8 +134,55 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     response = await web_client.get("/app")
 
     assert response.status_code == 200
-    assert "<title>App - EasyETFsAT</title>" in response.text
-    assert "You are logged in as admin." in response.text
+    assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
+    assert 'aria-label="Primary sections"' in response.text
+    assert response.text.count('class="portal-nav-link') == 3
+    assert ">BusinessQuery<" in response.text
+    assert ">Search<" in response.text
+    assert ">Documentation<" in response.text
+    assert 'href="/app/business-query"' in response.text
+    assert 'href="/app/search"' in response.text
+    assert 'href="/app/documentation"' in response.text
+    assert "Signed in as <strong>admin</strong>" in response.text
+    assert "<h1 id=\"app-title\">BusinessQuery</h1>" in response.text
+    assert "Placeholder workspace for future query execution." in response.text
+    assert '<form method="post" action="/logout">' in response.text
+
+
+@pytest.mark.asyncio
+async def test_app_placeholder_pages_render_for_authenticated_users(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    cases = [
+        (
+            "/app/business-query",
+            "BusinessQuery",
+            "Placeholder workspace for future query execution.",
+        ),
+        (
+            "/app/search",
+            "Search",
+            "Placeholder workspace for future portfolio and report search.",
+        ),
+        (
+            "/app/documentation",
+            "Documentation",
+            "Placeholder workspace for future user documentation.",
+        ),
+    ]
+    for path, title, summary in cases:
+        response = await web_client.get(path)
+
+        assert response.status_code == 200
+        assert f"<title>{title} - EasyETFsAT</title>" in response.text
+        assert f'<h1 id="app-title">{title}</h1>' in response.text
+        assert summary in response.text
 
 
 @pytest.mark.asyncio
