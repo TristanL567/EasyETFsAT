@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     oekb_timeout_seconds: float = 30.0
     ecb_rate_limit_per_second: float = 4.0
     ecb_timeout_seconds: float = 30.0
+    web_auth_username: str = "admin"
+    web_auth_password_hash: str = (
+        "pbkdf2_sha256$260000$easyetfsat-dev$"
+        "9b6e71b435fb984697a06792fa9b553be7249f70d1443b5adcd8a5aaedfa10b1"
+    )
+    web_session_secret: str = "change-me-for-deployed-web-sessions"
+    web_session_cookie_name: str = "easyetfsat_session"
+    web_session_max_age_seconds: int = 8 * 60 * 60
 
     @property
     def alembic_database_url(self) -> str:

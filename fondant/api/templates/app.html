@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/site.css') }}">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header" aria-label="App navigation">
+        <a class="brand" href="/app">EasyETFsAT</a>
+        <form method="post" action="/logout">
+          <button class="login-link" type="submit">Log out</button>
+        </form>
+      </header>
+
+      <main class="app-placeholder">
+        <section class="intro" aria-labelledby="app-title">
+          <p class="eyebrow">Authenticated workspace</p>
+          <h1 id="app-title">EasyETFsAT app</h1>
+          <p class="summary">You are logged in as {{ username }}.</p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

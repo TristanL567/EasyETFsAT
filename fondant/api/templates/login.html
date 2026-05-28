@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/site.css') }}">
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header" aria-label="Public navigation">
+        <a class="brand" href="/">EasyETFsAT</a>
+      </header>
+
+      <main class="auth-page">
+        <section class="auth-panel" aria-labelledby="login-title">
+          <p class="eyebrow">Secure portal</p>
+          <h1 id="login-title">Log in</h1>
+          {% if login_failed %}
+          <p class="form-error" role="alert">The username or password is incorrect.</p>
+          {% endif %}
+          <form class="login-form" method="post" action="/login">
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" autocomplete="username" required>
+
+            <label for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            >
+
+            <button class="primary-action" type="submit">Log in</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
