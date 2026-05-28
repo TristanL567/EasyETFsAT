@@ -698,7 +698,7 @@ async def test_search_renders_empty_database_state_without_searching(
 
 
 @pytest.mark.asyncio
-async def test_documentation_placeholder_page_renders_for_authenticated_users(
+async def test_documentation_page_renders_authenticated_help_content(
     web_client: httpx.AsyncClient,
 ) -> None:
     login_response = await web_client.post(
@@ -712,7 +712,17 @@ async def test_documentation_placeholder_page_renders_for_authenticated_users(
     assert response.status_code == 200
     assert "<title>Documentation - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Documentation</h1>' in response.text
-    assert "Placeholder workspace for future user documentation." in response.text
+    assert "Quick reference for authenticated BusinessQuery and Search use." in response.text
+    assert "BusinessQuery queries V2_TAXDATEUR only." in response.text
+    assert "K40" in response.text
+    assert "K61" in response.text
+    assert "K62" in response.text
+    assert "PVM" in response.text
+    assert "BVO" in response.text
+    assert "STI" in response.text
+    assert "amount multiplier" in response.text
+    assert "CSV exports include" in response.text
+    assert "Search helps find available fund tax data" in response.text
 
 
 @pytest.mark.asyncio

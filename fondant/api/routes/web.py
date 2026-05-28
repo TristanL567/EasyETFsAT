@@ -56,7 +56,7 @@ APP_SECTIONS = {
         "label": "Documentation",
         "path": "/app/documentation",
         "title": "Documentation",
-        "summary": "Placeholder workspace for future user documentation.",
+        "summary": "Quick reference for authenticated BusinessQuery and Search use.",
     },
 }
 

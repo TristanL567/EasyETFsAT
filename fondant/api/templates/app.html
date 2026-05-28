@@ -210,8 +210,13 @@
             </div>
             {% else %}
             <div class="placeholder-panel">
-              <h2>{{ section.label }} placeholder</h2>
-              <p>This area is reserved for a later ticket.</p>
+              <h2>BusinessQuery reference</h2>
+              <p>BusinessQuery queries V2_TAXDATEUR only.</p>
+              <p>Legal entity mappings: natural person uses PVM and PVO; business uses BVM, BVO, and BVJ; Stiftung uses STI.</p>
+              <p>Supported tax fields are K40, K61, and K62.</p>
+              <p>The base value is the EUR value from the tax data before applying your entered amount. The calculated value is the base value multiplied by the amount multiplier.</p>
+              <p>CSV exports include the query name, ISIN, tax year, tax field, legal entity category, base EUR value, amount multiplier, and calculated EUR value.</p>
+              <p>Search helps find available fund tax data by ISIN or fund/security name, then sends a selected ISIN into BusinessQuery.</p>
             </div>
             {% endif %}
           </section>
