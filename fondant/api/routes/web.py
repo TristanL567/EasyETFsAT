@@ -6,12 +6,16 @@ import re
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Annotated, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from fondant.business_query import BusinessQueryInput, BusinessQueryResult, execute_business_query
 from fondant.config import Settings, get_settings
+from fondant.db.session import get_session
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 
@@ -26,7 +30,7 @@ APP_SECTIONS = {
         "label": "BusinessQuery",
         "path": "/app/business-query",
         "title": "BusinessQuery",
-        "summary": "Placeholder workspace for future query execution.",
+        "summary": "Run structured Austrian ETF tax queries for authenticated review.",
     },
     "search": {
         "label": "Search",
@@ -233,7 +237,7 @@ def _render_app_shell(
     *,
     business_query_form: dict[str, str] | None = None,
     business_query_errors: dict[str, str] | None = None,
-    business_query_preview: dict[str, object] | None = None,
+    business_query_result: BusinessQueryResult | None = None,
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
@@ -250,7 +254,7 @@ def _render_app_shell(
             "legal_entity_types": LEGAL_ENTITY_TYPES,
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
-            "business_query_preview": business_query_preview,
+            "business_query_result": business_query_result,
         },
     )
 
@@ -266,7 +270,10 @@ async def app_business_query(request: Request) -> HTMLResponse:
 
 
 @router.post("/app/business-query", response_class=HTMLResponse)
-async def submit_business_query(request: Request) -> HTMLResponse:
+async def submit_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
         return RedirectResponse(url="/login", status_code=303)
@@ -286,13 +293,24 @@ async def submit_business_query(request: Request) -> HTMLResponse:
             "legal_entity_type": str(preview["legal_entity_type"]),
             "amount": str(preview["amount"]),
         }
+        result = await execute_business_query(
+            session,
+            BusinessQueryInput(
+                query_name=form_values["query_name"],
+                isins=tuple(cast(list[str], preview["isins"])),
+                legal_entity_type=form_values["legal_entity_type"],
+                amount_multiplier=Decimal(form_values["amount"]),
+            ),
+        )
+    else:
+        result = None
 
     return _render_app_shell(
         request,
         "business-query",
         business_query_form=form_values,
         business_query_errors=errors,
-        business_query_preview=preview,
+        business_query_result=result,
     )
 
 

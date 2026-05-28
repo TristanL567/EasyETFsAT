@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+
 import httpx
 import pytest
 
 from fondant.api.main import create_app
+from fondant.api.routes import web as web_routes
+from fondant.business_query import BusinessQueryInput, BusinessQueryResult, BusinessQueryResultRow
 
 
 @pytest.fixture
@@ -145,8 +150,7 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert 'href="/app/documentation"' in response.text
     assert "Signed in as <strong>admin</strong>" in response.text
     assert "<h1 id=\"app-title\">BusinessQuery</h1>" in response.text
-    assert "This setup validates inputs only." in response.text
-    assert "Query execution and saving are not available yet." in response.text
+    assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
     assert '<form method="post" action="/logout">' in response.text
 
 
@@ -175,7 +179,7 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
         assert '<label for="amount">Amount</label>' in response.text
         assert 'name="amount"' in response.text
-        assert "Query execution and saving are not available yet." in response.text
+        assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
         assert 'type="submit"' in response.text
 
         normalized_html = " ".join(response.text.split())
@@ -206,9 +210,40 @@ async def test_business_query_post_redirects_unauthenticated_users_to_login(
 
 
 @pytest.mark.asyncio
-async def test_business_query_valid_post_renders_normalized_preview(
+async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name="Monthly review",
+                    isin="IE00BMTX1Y45",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.0000000000"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=Decimal("10.0000000000"),
+                    amount_multiplier=Decimal("1000.50"),
+                    calculated_eur_value=Decimal("10005.000000000000"),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -232,15 +267,80 @@ async def test_business_query_valid_post_renders_normalized_preview(
     assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
     assert '<option value="business" selected>business</option>' in response.text
     assert 'value="1000.50"' in response.text
-    assert "<h2>Input preview</h2>" in response.text
+    assert "<h2>Query results</h2>" in response.text
     assert "<dd>IE00BMTX1Y45, LU1681044993</dd>" in response.text
+    assert "<th scope=\"col\">ISIN</th>" in response.text
+    assert "<th scope=\"col\">Tax year</th>" in response.text
+    assert "<th scope=\"col\">Tax field</th>" in response.text
+    assert "<th scope=\"col\">Legal entity category</th>" in response.text
+    assert "<th scope=\"col\">Base value</th>" in response.text
+    assert "<th scope=\"col\">Multiplier</th>" in response.text
+    assert "<th scope=\"col\">Calculated value</th>" in response.text
+    assert "<td>IE00BMTX1Y45</td>" in response.text
+    assert "<td>2025</td>" in response.text
+    assert "<td>K40 - Taxable income</td>" in response.text
+    assert "<td>BVM</td>" in response.text
+    assert "<td>10.0000000000</td>" in response.text
+    assert "<td>1000.50</td>" in response.text
+    assert "<td>10005.000000000000</td>" in response.text
     assert "field-error" not in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.query_name == "Monthly review"
+    assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
+    assert query.legal_entity_type == "business"
+    assert query.amount_multiplier == Decimal("1000.50")
+
+
+@pytest.mark.asyncio
+async def test_business_query_valid_post_with_no_rows_renders_empty_state(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "No rows",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "amount": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "No tax rows matched the submitted ISINs." in response.text
+    assert 'value="No rows"' in response.text
+    assert ">IE00BMTX1Y45</textarea>" in response.text
+    assert len(service_calls) == 1
 
 
 @pytest.mark.asyncio
 async def test_business_query_invalid_post_preserves_values_and_shows_errors(
     web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("invalid BusinessQuery POST must not call the service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -264,7 +364,7 @@ async def test_business_query_invalid_post_preserves_values_and_shows_errors(
     assert "Enter ISIN-like values such as IE00BMTX1Y45." in response.text
     assert "Choose a supported legal entity type." in response.text
     assert "Enter a positive amount." in response.text
-    assert "<h2>Input preview</h2>" not in response.text
+    assert "<h2>Query results</h2>" not in response.text
 
 
 @pytest.mark.asyncio

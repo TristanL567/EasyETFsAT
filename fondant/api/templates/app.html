@@ -37,7 +37,7 @@
             {% if section.label == "BusinessQuery" %}
             <form class="business-query-form" method="post" action="/app/business-query" aria-label="BusinessQuery setup" novalidate>
               <p class="form-note">
-                This setup validates inputs only. Query execution and saving are not available yet.
+                Submit structured inputs to calculate Austrian ETF tax values.
               </p>
 
               <label for="query-name">Custom query name</label>
@@ -92,32 +92,64 @@
               <p class="field-error" id="amount-error">{{ business_query_errors.amount }}</p>
               {% endif %}
 
-              {% if business_query_preview %}
-              <div class="preview-panel" aria-live="polite">
-                <h2>Input preview</h2>
+              {% if business_query_result is not none %}
+              <div class="result-panel" aria-live="polite">
+                <h2>Query results</h2>
                 <dl>
                   <div>
                     <dt>Query name</dt>
-                    <dd>{{ business_query_preview.query_name }}</dd>
+                    <dd>{{ business_query_result.query.query_name }}</dd>
                   </div>
                   <div>
                     <dt>ISINs</dt>
-                    <dd>{{ business_query_preview.isins | join(", ") }}</dd>
+                    <dd>{{ business_query_result.query.isins | join(", ") }}</dd>
                   </div>
                   <div>
                     <dt>Legal entity type</dt>
-                    <dd>{{ business_query_preview.legal_entity_type }}</dd>
+                    <dd>{{ business_query_result.query.legal_entity_type }}</dd>
                   </div>
                   <div>
                     <dt>Amount</dt>
-                    <dd>{{ business_query_preview.amount }}</dd>
+                    <dd>{{ business_query_result.query.amount_multiplier }}</dd>
                   </div>
                 </dl>
+                {% if business_query_result.is_empty %}
+                <p class="empty-state">No tax rows matched the submitted ISINs.</p>
+                {% else %}
+                <div class="result-table-wrap">
+                  <table class="result-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">ISIN</th>
+                        <th scope="col">Tax year</th>
+                        <th scope="col">Tax field</th>
+                        <th scope="col">Legal entity category</th>
+                        <th scope="col">Base value</th>
+                        <th scope="col">Multiplier</th>
+                        <th scope="col">Calculated value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in business_query_result.rows %}
+                      <tr>
+                        <td>{{ row.isin }}</td>
+                        <td>{{ row.tax_year if row.tax_year is not none else "-" }}</td>
+                        <td>{{ row.tax_field_code }} - {{ row.tax_field_label }}</td>
+                        <td>{{ row.legal_entity_category }}</td>
+                        <td>{{ row.base_eur_value if row.base_eur_value is not none else "-" }}</td>
+                        <td>{{ row.amount_multiplier }}</td>
+                        <td>{{ row.calculated_eur_value if row.calculated_eur_value is not none else "-" }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                {% endif %}
               </div>
               {% endif %}
 
               <button class="primary-action" type="submit">
-                Preview inputs
+                Run query
               </button>
             </form>
             {% else %}
