@@ -67,6 +67,22 @@ async def test_static_css_is_served(web_client: httpx.AsyncClient) -> None:
     assert "@media" in response.text
 
 
+def test_app_startup_registers_static_web_and_api_routes_together() -> None:
+    app = create_app()
+
+    route_paths = {getattr(route, "path", "") for route in app.routes}
+
+    assert "/static" in route_paths
+    assert "/" in route_paths
+    assert "/login" in route_paths
+    assert "/app" in route_paths
+    assert "/app/business-query" in route_paths
+    assert "/app/search" in route_paths
+    assert "/app/documentation" in route_paths
+    assert "/health" in route_paths
+    assert "/etf/{isin}/tax" in route_paths
+
+
 @pytest.mark.asyncio
 async def test_login_form_renders(web_client: httpx.AsyncClient) -> None:
     response = await web_client.get("/login")
