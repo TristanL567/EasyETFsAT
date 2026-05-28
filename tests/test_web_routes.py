@@ -145,12 +145,47 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert 'href="/app/documentation"' in response.text
     assert "Signed in as <strong>admin</strong>" in response.text
     assert "<h1 id=\"app-title\">BusinessQuery</h1>" in response.text
-    assert "Placeholder workspace for future query execution." in response.text
+    assert "This setup is UI-only." in response.text
+    assert "only the final V2 view" in response.text
     assert '<form method="post" action="/logout">' in response.text
 
 
 @pytest.mark.asyncio
-async def test_app_placeholder_pages_render_for_authenticated_users(
+async def test_business_query_form_renders_for_authenticated_users(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    for path in ["/app", "/app/business-query"]:
+        response = await web_client.get(path)
+
+        assert response.status_code == 200
+        assert '<form class="business-query-form" aria-label="BusinessQuery setup">' in response.text
+        assert '<label for="query-name">Custom query name</label>' in response.text
+        assert 'name="query_name"' in response.text
+        assert '<label for="isins">ISIN input area</label>' in response.text
+        assert 'name="isins"' in response.text
+        assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
+        assert '<label for="amount">Amount</label>' in response.text
+        assert 'name="amount"' in response.text
+        assert "Query execution will later use only the final V2 view." in response.text
+        assert 'type="button" disabled' in response.text
+
+        normalized_html = " ".join(response.text.split())
+        assert (
+            '<option value="natural person">natural person</option> '
+            '<option value="business">business</option> '
+            '<option value="Stiftung">Stiftung</option>'
+        ) in normalized_html
+        assert normalized_html.count("<option") == 3
+
+
+@pytest.mark.asyncio
+async def test_non_business_query_placeholder_pages_render_for_authenticated_users(
     web_client: httpx.AsyncClient,
 ) -> None:
     login_response = await web_client.post(
@@ -160,11 +195,6 @@ async def test_app_placeholder_pages_render_for_authenticated_users(
     assert login_response.status_code == 303
 
     cases = [
-        (
-            "/app/business-query",
-            "BusinessQuery",
-            "Placeholder workspace for future query execution.",
-        ),
         (
             "/app/search",
             "Search",

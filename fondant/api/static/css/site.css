@@ -189,6 +189,44 @@ h1 {
   color: var(--muted);
 }
 
+.business-query-form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 42rem;
+  margin-top: 2rem;
+  padding: 1.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.business-query-form label {
+  font-weight: 700;
+}
+
+.business-query-form input,
+.business-query-form textarea,
+.business-query-form select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
+
+.business-query-form textarea {
+  resize: vertical;
+}
+
+.form-note {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+}
+
 .auth-panel {
   width: min(100%, 24rem);
 }
@@ -240,7 +278,10 @@ h1 {
 
 .login-link:focus-visible,
 .primary-action:focus-visible,
-.login-form input:focus-visible {
+.login-form input:focus-visible,
+.business-query-form input:focus-visible,
+.business-query-form textarea:focus-visible,
+.business-query-form select:focus-visible {
   outline: 3px solid #f0b429;
   outline-offset: 3px;
 }
@@ -251,6 +292,12 @@ h1 {
 
 .primary-action:hover {
   background: var(--accent-strong);
+}
+
+.primary-action:disabled,
+.primary-action:disabled:hover {
+  background: #7a8a87;
+  cursor: not-allowed;
 }
 
 @media (max-width: 640px) {

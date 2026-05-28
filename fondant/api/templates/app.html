@@ -34,10 +34,57 @@
             <p class="eyebrow">Authenticated workspace</p>
             <h1 id="app-title">{{ section.title }}</h1>
             <p class="summary">{{ section.summary }}</p>
+            {% if section.label == "BusinessQuery" %}
+            <form class="business-query-form" aria-label="BusinessQuery setup">
+              <p class="form-note">
+                This setup is UI-only. Query execution will later use only the final V2 view.
+              </p>
+
+              <label for="query-name">Custom query name</label>
+              <input
+                id="query-name"
+                name="query_name"
+                type="text"
+                autocomplete="off"
+                placeholder="Monthly Austrian ETF review"
+              >
+
+              <label for="isins">ISIN input area</label>
+              <textarea
+                id="isins"
+                name="isins"
+                rows="6"
+                placeholder="Enter one ISIN per line"
+              ></textarea>
+
+              <label for="legal-entity-type">Legal entity type</label>
+              <select id="legal-entity-type" name="legal_entity_type">
+                <option value="natural person">natural person</option>
+                <option value="business">business</option>
+                <option value="Stiftung">Stiftung</option>
+              </select>
+
+              <label for="amount">Amount</label>
+              <input
+                id="amount"
+                name="amount"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="10000.00"
+              >
+
+              <button class="primary-action" type="button" disabled>
+                Save query draft unavailable
+              </button>
+            </form>
+            {% else %}
             <div class="placeholder-panel">
               <h2>{{ section.label }} placeholder</h2>
               <p>This area is reserved for a later ticket.</p>
             </div>
+            {% endif %}
           </section>
         </main>
       </div>
