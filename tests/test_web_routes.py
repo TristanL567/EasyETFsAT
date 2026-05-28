@@ -145,8 +145,8 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert 'href="/app/documentation"' in response.text
     assert "Signed in as <strong>admin</strong>" in response.text
     assert "<h1 id=\"app-title\">BusinessQuery</h1>" in response.text
-    assert "This setup is UI-only." in response.text
-    assert "only the final V2 view" in response.text
+    assert "This setup validates inputs only." in response.text
+    assert "Query execution and saving are not available yet." in response.text
     assert '<form method="post" action="/logout">' in response.text
 
 
@@ -164,7 +164,10 @@ async def test_business_query_form_renders_for_authenticated_users(
         response = await web_client.get(path)
 
         assert response.status_code == 200
-        assert '<form class="business-query-form" aria-label="BusinessQuery setup">' in response.text
+        assert (
+            '<form class="business-query-form" method="post" '
+            'action="/app/business-query" aria-label="BusinessQuery setup" novalidate>'
+        ) in response.text
         assert '<label for="query-name">Custom query name</label>' in response.text
         assert 'name="query_name"' in response.text
         assert '<label for="isins">ISIN input area</label>' in response.text
@@ -172,16 +175,96 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
         assert '<label for="amount">Amount</label>' in response.text
         assert 'name="amount"' in response.text
-        assert "Query execution will later use only the final V2 view." in response.text
-        assert 'type="button" disabled' in response.text
+        assert "Query execution and saving are not available yet." in response.text
+        assert 'type="submit"' in response.text
 
         normalized_html = " ".join(response.text.split())
         assert (
-            '<option value="natural person">natural person</option> '
+            '<option value="natural person" selected>natural person</option> '
             '<option value="business">business</option> '
             '<option value="Stiftung">Stiftung</option>'
         ) in normalized_html
         assert normalized_html.count("<option") == 3
+
+
+@pytest.mark.asyncio
+async def test_business_query_post_redirects_unauthenticated_users_to_login(
+    web_client: httpx.AsyncClient,
+) -> None:
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Monthly review",
+            "isins": "ie00bmtx1y45",
+            "legal_entity_type": "business",
+            "amount": "1000",
+        },
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+@pytest.mark.asyncio
+async def test_business_query_valid_post_renders_normalized_preview(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "  Monthly review  ",
+            "isins": "ie00bmtx1y45\n lu1681044993 ",
+            "legal_entity_type": "business",
+            "amount": "1000.50",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
+    assert 'id="query-name"' in response.text
+    assert 'value="Monthly review"' in response.text
+    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert '<option value="business" selected>business</option>' in response.text
+    assert 'value="1000.50"' in response.text
+    assert "<h2>Input preview</h2>" in response.text
+    assert "<dd>IE00BMTX1Y45, LU1681044993</dd>" in response.text
+    assert "field-error" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_invalid_post_preserves_values_and_shows_errors(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": " ",
+            "isins": "not-an-isin",
+            "legal_entity_type": "foundation",
+            "amount": "-1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
+    assert ">not-an-isin</textarea>" in response.text
+    assert "Enter a custom query name." in response.text
+    assert "Enter ISIN-like values such as IE00BMTX1Y45." in response.text
+    assert "Choose a supported legal entity type." in response.text
+    assert "Enter a positive amount." in response.text
+    assert "<h2>Input preview</h2>" not in response.text
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,9 @@ import base64
 import hashlib
 import hmac
 import json
+import re
 import time
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -15,6 +17,9 @@ TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 router = APIRouter(include_in_schema=False)
+
+LEGAL_ENTITY_TYPES = ("natural person", "business", "Stiftung")
+ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 
 APP_SECTIONS = {
     "business-query": {
@@ -36,6 +41,68 @@ APP_SECTIONS = {
         "summary": "Placeholder workspace for future user documentation.",
     },
 }
+
+
+def _empty_business_query_form() -> dict[str, str]:
+    return {
+        "query_name": "",
+        "isins": "",
+        "legal_entity_type": LEGAL_ENTITY_TYPES[0],
+        "amount": "",
+    }
+
+
+def _normalize_isin_input(value: str) -> list[str]:
+    candidates = re.split(r"[\s,;]+", value.upper())
+    return [candidate for candidate in candidates if candidate]
+
+
+def _validate_business_query_form(
+    form_values: dict[str, str],
+) -> tuple[dict[str, str], dict[str, object] | None]:
+    errors: dict[str, str] = {}
+    query_name = form_values["query_name"].strip()
+    normalized_isins = _normalize_isin_input(form_values["isins"])
+    legal_entity_type = form_values["legal_entity_type"]
+    amount_text = form_values["amount"].strip()
+
+    if not query_name:
+        errors["query_name"] = "Enter a custom query name."
+
+    if not normalized_isins:
+        errors["isins"] = "Enter at least one ISIN."
+    else:
+        invalid_isins = [isin for isin in normalized_isins if not ISIN_PATTERN.fullmatch(isin)]
+        if invalid_isins:
+            errors["isins"] = "Enter ISIN-like values such as IE00BMTX1Y45."
+
+    if legal_entity_type not in LEGAL_ENTITY_TYPES:
+        errors["legal_entity_type"] = "Choose a supported legal entity type."
+
+    amount: Decimal | None = None
+    if not amount_text:
+        errors["amount"] = "Enter a positive amount."
+    else:
+        try:
+            amount = Decimal(amount_text)
+        except InvalidOperation:
+            errors["amount"] = "Enter a numeric amount."
+        else:
+            if not amount.is_finite():
+                errors["amount"] = "Enter a numeric amount."
+            elif amount <= 0:
+                errors["amount"] = "Enter a positive amount."
+
+    if errors:
+        return errors, None
+
+    return errors, {
+        "query_name": query_name,
+        "isins": normalized_isins,
+        "isins_text": "\n".join(normalized_isins),
+        "legal_entity_type": legal_entity_type,
+        "amount": str(amount),
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -160,7 +227,14 @@ async def logout() -> RedirectResponse:
     return response
 
 
-def _render_app_shell(request: Request, section_key: str) -> HTMLResponse:
+def _render_app_shell(
+    request: Request,
+    section_key: str,
+    *,
+    business_query_form: dict[str, str] | None = None,
+    business_query_errors: dict[str, str] | None = None,
+    business_query_preview: dict[str, object] | None = None,
+) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
         return RedirectResponse(url="/login", status_code=303)
@@ -173,6 +247,10 @@ def _render_app_shell(request: Request, section_key: str) -> HTMLResponse:
             "username": username,
             "section": section,
             "sections": APP_SECTIONS.values(),
+            "legal_entity_types": LEGAL_ENTITY_TYPES,
+            "business_query_form": business_query_form or _empty_business_query_form(),
+            "business_query_errors": business_query_errors or {},
+            "business_query_preview": business_query_preview,
         },
     )
 
@@ -185,6 +263,37 @@ async def app_home(request: Request) -> HTMLResponse:
 @router.get("/app/business-query", response_class=HTMLResponse)
 async def app_business_query(request: Request) -> HTMLResponse:
     return _render_app_shell(request, "business-query")
+
+
+@router.post("/app/business-query", response_class=HTMLResponse)
+async def submit_business_query(request: Request) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    form_values = {
+        "query_name": str(form.get("query_name", "")),
+        "isins": str(form.get("isins", "")),
+        "legal_entity_type": str(form.get("legal_entity_type", "")),
+        "amount": str(form.get("amount", "")),
+    }
+    errors, preview = _validate_business_query_form(form_values)
+    if preview is not None:
+        form_values = {
+            "query_name": str(preview["query_name"]),
+            "isins": str(preview["isins_text"]),
+            "legal_entity_type": str(preview["legal_entity_type"]),
+            "amount": str(preview["amount"]),
+        }
+
+    return _render_app_shell(
+        request,
+        "business-query",
+        business_query_form=form_values,
+        business_query_errors=errors,
+        business_query_preview=preview,
+    )
 
 
 @router.get("/app/search", response_class=HTMLResponse)

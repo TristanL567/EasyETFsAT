@@ -35,9 +35,9 @@
             <h1 id="app-title">{{ section.title }}</h1>
             <p class="summary">{{ section.summary }}</p>
             {% if section.label == "BusinessQuery" %}
-            <form class="business-query-form" aria-label="BusinessQuery setup">
+            <form class="business-query-form" method="post" action="/app/business-query" aria-label="BusinessQuery setup" novalidate>
               <p class="form-note">
-                This setup is UI-only. Query execution will later use only the final V2 view.
+                This setup validates inputs only. Query execution and saving are not available yet.
               </p>
 
               <label for="query-name">Custom query name</label>
@@ -47,7 +47,12 @@
                 type="text"
                 autocomplete="off"
                 placeholder="Monthly Austrian ETF review"
+                value="{{ business_query_form.query_name }}"
+                {% if business_query_errors.query_name %}aria-invalid="true" aria-describedby="query-name-error"{% endif %}
               >
+              {% if business_query_errors.query_name %}
+              <p class="field-error" id="query-name-error">{{ business_query_errors.query_name }}</p>
+              {% endif %}
 
               <label for="isins">ISIN input area</label>
               <textarea
@@ -55,14 +60,21 @@
                 name="isins"
                 rows="6"
                 placeholder="Enter one ISIN per line"
-              ></textarea>
+                {% if business_query_errors.isins %}aria-invalid="true" aria-describedby="isins-error"{% endif %}
+              >{{ business_query_form.isins }}</textarea>
+              {% if business_query_errors.isins %}
+              <p class="field-error" id="isins-error">{{ business_query_errors.isins }}</p>
+              {% endif %}
 
               <label for="legal-entity-type">Legal entity type</label>
               <select id="legal-entity-type" name="legal_entity_type">
-                <option value="natural person">natural person</option>
-                <option value="business">business</option>
-                <option value="Stiftung">Stiftung</option>
+                {% for entity_type in legal_entity_types %}
+                <option value="{{ entity_type }}"{% if business_query_form.legal_entity_type == entity_type %} selected{% endif %}>{{ entity_type }}</option>
+                {% endfor %}
               </select>
+              {% if business_query_errors.legal_entity_type %}
+              <p class="field-error" id="legal-entity-type-error">{{ business_query_errors.legal_entity_type }}</p>
+              {% endif %}
 
               <label for="amount">Amount</label>
               <input
@@ -73,10 +85,39 @@
                 min="0"
                 step="0.01"
                 placeholder="10000.00"
+                value="{{ business_query_form.amount }}"
+                {% if business_query_errors.amount %}aria-invalid="true" aria-describedby="amount-error"{% endif %}
               >
+              {% if business_query_errors.amount %}
+              <p class="field-error" id="amount-error">{{ business_query_errors.amount }}</p>
+              {% endif %}
 
-              <button class="primary-action" type="button" disabled>
-                Save query draft unavailable
+              {% if business_query_preview %}
+              <div class="preview-panel" aria-live="polite">
+                <h2>Input preview</h2>
+                <dl>
+                  <div>
+                    <dt>Query name</dt>
+                    <dd>{{ business_query_preview.query_name }}</dd>
+                  </div>
+                  <div>
+                    <dt>ISINs</dt>
+                    <dd>{{ business_query_preview.isins | join(", ") }}</dd>
+                  </div>
+                  <div>
+                    <dt>Legal entity type</dt>
+                    <dd>{{ business_query_preview.legal_entity_type }}</dd>
+                  </div>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{{ business_query_preview.amount }}</dd>
+                  </div>
+                </dl>
+              </div>
+              {% endif %}
+
+              <button class="primary-action" type="submit">
+                Preview inputs
               </button>
             </form>
             {% else %}
