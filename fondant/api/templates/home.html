@@ -7,14 +7,25 @@
     <link rel="stylesheet" href="{{ url_for('static', path='css/site.css') }}">
   </head>
   <body>
-    <main class="page-shell">
-      <section class="intro">
-        <p class="eyebrow">Austrian ETF tax reporting</p>
-        <h1>EasyETFsAT</h1>
-        <p class="summary">
-          Server-rendered web foundation for the EasyETFsAT application.
-        </p>
-      </section>
-    </main>
+    <div class="page-shell">
+      <header class="site-header" aria-label="Public navigation">
+        <a class="brand" href="/">EasyETFsAT</a>
+        <a class="login-link" href="/login">Log in</a>
+      </header>
+
+      <main class="landing">
+        <section class="intro" aria-labelledby="landing-title">
+          <p class="eyebrow">Austrian ETF tax reporting</p>
+          <h1 id="landing-title">EasyETFsAT</h1>
+          <p class="summary">
+            Austrian ETF tax reporting and inspection using OeKB public reports
+            and ECB FX data.
+          </p>
+          <div class="actions">
+            <a class="primary-action" href="/login">Log in to continue</a>
+          </div>
+        </section>
+      </main>
+    </div>
   </body>
 </html>
