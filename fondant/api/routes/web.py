@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import time
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from io import StringIO
 from pathlib import Path
@@ -18,7 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fondant import update_data
-from fondant.business_query import BusinessQueryInput, BusinessQueryResult, execute_business_query
+from fondant.business_query import (
+    ALL_AVAILABLE_YEARS,
+    DEFAULT_SUBCATEGORY_KEYS,
+    BusinessQueryInput,
+    BusinessQueryResult,
+    execute_business_query,
+)
 from fondant.config import Settings, get_settings
 from fondant.db.models import INGJOB
 from fondant.db.session import get_session
@@ -32,6 +39,28 @@ router = APIRouter(include_in_schema=False)
 logger = logging.getLogger(__name__)
 
 LEGAL_ENTITY_TYPES = ("natural person", "business", "Stiftung")
+BUSINESS_QUERY_SUBCATEGORY_OPTIONS = {
+    "natural person": (
+        ("natural_person_pa_with_option", "PA mit Option"),
+        ("natural_person_pa_without_option", "PA ohne Option"),
+        ("natural_person_all", "All private investor categories"),
+    ),
+    "business": (
+        ("business_bv_with_option", "BV mit Option"),
+        ("business_bv_without_option", "BV ohne Option"),
+        ("business_bv_legal_person", "BV jur. Person"),
+        ("business_all", "All business categories"),
+    ),
+    "Stiftung": (("stiftung", "Stiftung"),),
+}
+BUSINESS_QUERY_SUBCATEGORY_LABELS = {
+    key: label
+    for options in BUSINESS_QUERY_SUBCATEGORY_OPTIONS.values()
+    for key, label in options
+}
+BUSINESS_QUERY_TAX_YEAR_OPTIONS = tuple(
+    str(year) for year in range(date.today().year, date.today().year - 8, -1)
+)
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 RECENT_UPDATE_DATA_JOB_LIMIT = 20
 BACKGROUND_UPDATE_DATA_JOB_LIMIT = 10
@@ -80,6 +109,8 @@ def _empty_business_query_form() -> dict[str, str]:
         "query_name": "",
         "isins": "",
         "legal_entity_type": LEGAL_ENTITY_TYPES[0],
+        "subcategory_key": DEFAULT_SUBCATEGORY_KEYS[LEGAL_ENTITY_TYPES[0]],
+        "tax_year_filter": ALL_AVAILABLE_YEARS,
         "amount": "",
     }
 
@@ -104,6 +135,8 @@ def _validate_business_query_form(
     query_name = form_values["query_name"].strip()
     normalized_isins = _normalize_isin_input(form_values["isins"])
     legal_entity_type = form_values["legal_entity_type"]
+    subcategory_key = form_values["subcategory_key"].strip()
+    tax_year_filter = form_values["tax_year_filter"].strip()
     amount_text = form_values["amount"].strip()
 
     if not query_name:
@@ -118,6 +151,19 @@ def _validate_business_query_form(
 
     if legal_entity_type not in LEGAL_ENTITY_TYPES:
         errors["legal_entity_type"] = "Choose a supported legal entity type."
+    else:
+        allowed_subcategory_keys = {
+            key for key, _label in BUSINESS_QUERY_SUBCATEGORY_OPTIONS[legal_entity_type]
+        }
+        if not subcategory_key:
+            errors["subcategory_key"] = "Choose a category for the selected legal entity type."
+        elif subcategory_key not in allowed_subcategory_keys:
+            errors["subcategory_key"] = "Choose a category that matches the selected legal entity type."
+
+    if tax_year_filter == "":
+        errors["tax_year_filter"] = "Choose a tax year."
+    elif tax_year_filter != ALL_AVAILABLE_YEARS and tax_year_filter not in BUSINESS_QUERY_TAX_YEAR_OPTIONS:
+        errors["tax_year_filter"] = "Choose All available years or one of the listed tax years."
 
     amount: Decimal | None = None
     if not amount_text:
@@ -141,15 +187,22 @@ def _validate_business_query_form(
         "isins": normalized_isins,
         "isins_text": "\n".join(normalized_isins),
         "legal_entity_type": legal_entity_type,
+        "subcategory_key": subcategory_key,
+        "tax_year_filter": tax_year_filter,
         "amount": str(amount),
     }
 
 
 def _business_query_form_values(form: Any) -> dict[str, str]:
+    legal_entity_type = str(form.get("legal_entity_type", ""))
     return {
         "query_name": str(form.get("query_name", "")),
         "isins": str(form.get("isins", "")),
-        "legal_entity_type": str(form.get("legal_entity_type", "")),
+        "legal_entity_type": legal_entity_type,
+        "subcategory_key": str(
+            form.get("subcategory_key", "") or DEFAULT_SUBCATEGORY_KEYS.get(legal_entity_type, "")
+        ),
+        "tax_year_filter": str(form.get("tax_year_filter", "") or ALL_AVAILABLE_YEARS),
         "amount": str(form.get("amount", "")),
     }
 
@@ -159,6 +212,8 @@ def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, str
         "query_name": str(preview["query_name"]),
         "isins": str(preview["isins_text"]),
         "legal_entity_type": str(preview["legal_entity_type"]),
+        "subcategory_key": str(preview["subcategory_key"]),
+        "tax_year_filter": str(preview["tax_year_filter"]),
         "amount": str(preview["amount"]),
     }
 
@@ -168,6 +223,8 @@ def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQu
         query_name=str(preview["query_name"]),
         isins=tuple(cast(list[str], preview["isins"])),
         legal_entity_type=str(preview["legal_entity_type"]),
+        subcategory_key=str(preview["subcategory_key"]),
+        tax_year_filter=str(preview["tax_year_filter"]),
         amount_multiplier=Decimal(str(preview["amount"])),
     )
 
@@ -345,6 +402,10 @@ def _render_app_shell(
             "section": section,
             "sections": APP_SECTIONS.values(),
             "legal_entity_types": LEGAL_ENTITY_TYPES,
+            "business_query_subcategory_options": BUSINESS_QUERY_SUBCATEGORY_OPTIONS,
+            "business_query_subcategory_labels": BUSINESS_QUERY_SUBCATEGORY_LABELS,
+            "all_available_years": ALL_AVAILABLE_YEARS,
+            "business_query_tax_year_options": BUSINESS_QUERY_TAX_YEAR_OPTIONS,
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
             "business_query_result": business_query_result,

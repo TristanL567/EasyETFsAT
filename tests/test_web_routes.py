@@ -255,6 +255,10 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert '<label for="isins">ISIN input area</label>' in response.text
         assert 'name="isins"' in response.text
         assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
+        assert '<label for="subcategory-key">Subcategory</label>' in response.text
+        assert 'name="subcategory_key"' in response.text
+        assert '<label for="tax-year-filter">Tax year</label>' in response.text
+        assert 'name="tax_year_filter"' in response.text
         assert '<label for="amount">Amount</label>' in response.text
         assert 'name="amount"' in response.text
         assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
@@ -266,7 +270,18 @@ async def test_business_query_form_renders_for_authenticated_users(
             '<option value="business">business</option> '
             '<option value="Stiftung">Stiftung</option>'
         ) in normalized_html
-        assert normalized_html.count("<option") == 3
+        assert '<option value="natural_person_all" selected>All private investor categories</option>' in normalized_html
+        assert '<option value="natural_person_pa_with_option">PA mit Option</option>' in normalized_html
+        assert '<option value="natural_person_pa_without_option">PA ohne Option</option>' in normalized_html
+        assert '<option value="business_all">All business categories</option>' in normalized_html
+        assert '<option value="business_bv_with_option">BV mit Option</option>' in normalized_html
+        assert '<option value="business_bv_without_option">BV ohne Option</option>' in normalized_html
+        assert '<option value="business_bv_legal_person">BV jur. Person</option>' in normalized_html
+        assert '<option value="stiftung">Stiftung</option>' in normalized_html
+        assert '<option value="all_available_years" selected>All available years</option>' in normalized_html
+        # BQ-004 uses a conservative server-provided rolling list instead of
+        # adding a database dependency to authenticated GET rendering.
+        assert f'<option value="{date.today().year}">{date.today().year}</option>' in normalized_html
 
 
 @pytest.mark.asyncio
@@ -369,6 +384,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
             "query_name": "  Monthly review  ",
             "isins": "ie00bmtx1y45\n lu1681044993 ",
             "legal_entity_type": "business",
+            "subcategory_key": "business_bv_without_option",
+            "tax_year_filter": "2025",
             "amount": "1000.50",
         },
     )
@@ -379,9 +396,15 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert 'value="Monthly review"' in response.text
     assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
     assert '<option value="business" selected>business</option>' in response.text
+    assert '<option value="business_bv_without_option" selected>BV ohne Option</option>' in response.text
+    assert '<option value="2025" selected>2025</option>' in response.text
     assert 'value="1000.50"' in response.text
     assert "<h2>Query results</h2>" in response.text
     assert "<dd>IE00BMTX1Y45, LU1681044993</dd>" in response.text
+    assert "<dt>Subcategory</dt>" in response.text
+    assert "<dd>BV ohne Option</dd>" in response.text
+    assert "<dt>Tax year</dt>" in response.text
+    assert "<dd>2025</dd>" in response.text
     assert "<th scope=\"col\">ISIN</th>" in response.text
     assert "<th scope=\"col\">Tax year</th>" in response.text
     assert "<th scope=\"col\">Tax field</th>" in response.text
@@ -404,6 +427,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert query.query_name == "Monthly review"
     assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
     assert query.legal_entity_type == "business"
+    assert query.subcategory_key == "business_bv_without_option"
+    assert query.tax_year_filter == "2025"
     assert query.amount_multiplier == Decimal("1000.50")
 
 
@@ -493,6 +518,8 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
             "query_name": "  Monthly review  ",
             "isins": "ie00bmtx1y45\n lu1681044993 ",
             "legal_entity_type": "business",
+            "subcategory_key": "business_bv_legal_person",
+            "tax_year_filter": "2025",
             "amount": "1000.50",
         },
     )
@@ -511,6 +538,8 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
     assert query.query_name == "Monthly review"
     assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
     assert query.legal_entity_type == "business"
+    assert query.subcategory_key == "business_bv_legal_person"
+    assert query.tax_year_filter == "2025"
     assert query.amount_multiplier == Decimal("1000.50")
 
 
@@ -589,6 +618,97 @@ async def test_business_query_invalid_post_preserves_values_and_shows_errors(
     assert "Choose a supported legal entity type." in response.text
     assert "Enter a positive amount." in response.text
     assert "<h2>Query results</h2>" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_invalid_subcategory_and_tax_year_show_validation_errors(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("invalid BusinessQuery POST must not call the service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Invalid filters",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "natural_person_all",
+            "tax_year_filter": "3001",
+            "amount": "100",
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'value="Invalid filters"' in response.text
+    assert ">IE00BMTX1Y45</textarea>" in response.text
+    assert '<option value="business" selected>business</option>' in response.text
+    assert '<option value="natural_person_all" selected>All private investor categories</option>' in response.text
+    assert "Choose a category that matches the selected legal entity type." in response.text
+    assert "Choose All available years or one of the listed tax years." in response.text
+    assert "<h2>Query results</h2>" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_stiftung_uses_fixed_subcategory_workflow(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Stiftung review",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "Stiftung",
+            "subcategory_key": "stiftung",
+            "tax_year_filter": "all_available_years",
+            "amount": "100",
+        },
+    )
+
+    assert response.status_code == 200
+    assert '<option value="Stiftung" selected>Stiftung</option>' in response.text
+    assert '<input type="hidden" name="subcategory_key" value="stiftung">' in response.text
+    assert 'id="subcategory-key"' not in response.text
+    assert "All private investor categories" not in response.text
+    assert "All business categories" not in response.text
+    assert "BV mit Option" not in response.text
+    assert "Stiftung uses the fixed Stiftung category." in response.text
+    assert "<dt>Subcategory</dt>" in response.text
+    assert "<dd>Stiftung</dd>" in response.text
+    assert "<dt>Tax year</dt>" in response.text
+    assert "<dd>All available years</dd>" in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.legal_entity_type == "Stiftung"
+    assert query.subcategory_key == "stiftung"
+    assert query.tax_year_filter == "all_available_years"
 
 
 @pytest.mark.asyncio

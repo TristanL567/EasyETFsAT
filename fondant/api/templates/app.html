@@ -76,6 +76,45 @@
               <p class="field-error" id="legal-entity-type-error">{{ business_query_errors.legal_entity_type }}</p>
               {% endif %}
 
+              {% if business_query_form.legal_entity_type == "Stiftung" %}
+              <label>Subcategory</label>
+              <input type="hidden" name="subcategory_key" value="stiftung">
+              <p class="field-note">Stiftung uses the fixed Stiftung category.</p>
+              {% else %}
+              <label for="subcategory-key">Subcategory</label>
+              <select
+                id="subcategory-key"
+                name="subcategory_key"
+                {% if business_query_errors.subcategory_key %}aria-invalid="true" aria-describedby="subcategory-key-error"{% endif %}
+              >
+                {% for entity_type, options in business_query_subcategory_options.items() %}
+                <optgroup label="{{ entity_type }}">
+                  {% for key, label in options %}
+                  <option value="{{ key }}"{% if business_query_form.subcategory_key == key %} selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </optgroup>
+                {% endfor %}
+              </select>
+              {% endif %}
+              {% if business_query_errors.subcategory_key %}
+              <p class="field-error" id="subcategory-key-error">{{ business_query_errors.subcategory_key }}</p>
+              {% endif %}
+
+              <label for="tax-year-filter">Tax year</label>
+              <select
+                id="tax-year-filter"
+                name="tax_year_filter"
+                {% if business_query_errors.tax_year_filter %}aria-invalid="true" aria-describedby="tax-year-filter-error"{% endif %}
+              >
+                <option value="{{ all_available_years }}"{% if business_query_form.tax_year_filter == all_available_years %} selected{% endif %}>All available years</option>
+                {% for tax_year in business_query_tax_year_options %}
+                <option value="{{ tax_year }}"{% if business_query_form.tax_year_filter == tax_year %} selected{% endif %}>{{ tax_year }}</option>
+                {% endfor %}
+              </select>
+              {% if business_query_errors.tax_year_filter %}
+              <p class="field-error" id="tax-year-filter-error">{{ business_query_errors.tax_year_filter }}</p>
+              {% endif %}
+
               <label for="amount">Amount</label>
               <input
                 id="amount"
@@ -107,6 +146,14 @@
                   <div>
                     <dt>Legal entity type</dt>
                     <dd>{{ business_query_result.query.legal_entity_type }}</dd>
+                  </div>
+                  <div>
+                    <dt>Subcategory</dt>
+                    <dd>{{ business_query_subcategory_labels[business_query_result.query.subcategory_key] }}</dd>
+                  </div>
+                  <div>
+                    <dt>Tax year</dt>
+                    <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
                   </div>
                   <div>
                     <dt>Amount</dt>
