@@ -272,9 +272,42 @@
               </button>
             </form>
 
-            <div class="placeholder-panel future-status-panel" aria-label="Future job status and history">
-              <h2>Future job status and history</h2>
-              <p>Queued and skipped submissions appear above. Background refresh execution and job history are not available in this version.</p>
+            <div class="result-panel update-job-history" aria-label="Update Data job history">
+              <h2>Recent update jobs</h2>
+              {% if update_data_recent_jobs %}
+              <div class="result-table-wrap">
+                <table class="result-table update-job-history-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">ISIN</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Requested user</th>
+                      <th scope="col">Created</th>
+                      <th scope="col">Started</th>
+                      <th scope="col">Finished</th>
+                      <th scope="col">Message</th>
+                      <th scope="col">Error detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in update_data_recent_jobs %}
+                    <tr>
+                      <td>{{ row.isin }}</td>
+                      <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+                      <td>{{ row.requested_user }}</td>
+                      <td>{{ row.created_at }}</td>
+                      <td>{{ row.started_at }}</td>
+                      <td>{{ row.finished_at }}</td>
+                      <td>{{ row.message }}</td>
+                      <td>{{ row.error_detail }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="empty-state">No update jobs have been queued yet.</p>
+              {% endif %}
             </div>
             {% else %}
             <div class="placeholder-panel">

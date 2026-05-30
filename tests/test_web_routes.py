@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import httpx
 import pytest
@@ -774,8 +775,9 @@ async def test_search_renders_empty_database_state_without_searching(
 
 @pytest.mark.asyncio
 async def test_update_data_page_renders_authenticated_input_form(
-    web_client: httpx.AsyncClient,
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
+    web_client, _session_factory = update_data_job_client
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -802,10 +804,72 @@ async def test_update_data_page_renders_authenticated_input_form(
     assert "New ISINs will eventually fetch OeKB data" in response.text
     assert "Existing ISINs will eventually check OeKB for newer data" in response.text
     assert "This version validates submitted ISINs only. It does not run ingestion yet." in response.text
-    assert "Future job status and history" in response.text
-    assert "Background refresh execution and job history are not available in this version." in response.text
+    assert "<h2>Recent update jobs</h2>" in response.text
+    assert "No update jobs have been queued yet." in response.text
     assert '<form class="business-query-form"' not in response.text
     assert '<form class="search-form"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_data_page_renders_recent_job_history(
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = update_data_job_client
+    async with session_factory() as session:
+        session.add_all(
+            [
+                INGJOB(
+                    isin="IE00BMTX1Y45",
+                    requested_user="first-user",
+                    status="success",
+                    message="Finished.",
+                    created_at=datetime(2026, 5, 1, 12, 0, 0),
+                    started_at=datetime(2026, 5, 1, 12, 1, 0),
+                    finished_at=datetime(2026, 5, 1, 12, 2, 0),
+                ),
+                INGJOB(
+                    isin="LU1681044993",
+                    requested_user="second-user",
+                    status="failed",
+                    message="Failed.",
+                    error_detail="Remote report was unavailable.",
+                    created_at=datetime(2026, 5, 2, 12, 0, 0),
+                    started_at=datetime(2026, 5, 2, 12, 1, 0),
+                    finished_at=datetime(2026, 5, 2, 12, 2, 0),
+                ),
+            ]
+        )
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/update-data")
+
+    assert response.status_code == 200
+    assert "<h2>Recent update jobs</h2>" in response.text
+    assert "No update jobs have been queued yet." not in response.text
+    assert response.text.index("<td>LU1681044993</td>") < response.text.index(
+        "<td>IE00BMTX1Y45</td>"
+    )
+    assert '<span class="status-pill status-failed">failed</span>' in response.text
+    assert '<span class="status-pill status-success">success</span>' in response.text
+    assert "<td>second-user</td>" in response.text
+    assert "<td>2026-05-02 12:00:00</td>" in response.text
+    assert "<td>2026-05-02 12:01:00</td>" in response.text
+    assert "<td>2026-05-02 12:02:00</td>" in response.text
+    assert "<td>Failed.</td>" in response.text
+    assert "<td>Remote report was unavailable.</td>" in response.text
+
+
+def test_update_data_status_styles_cover_all_job_statuses() -> None:
+    stylesheet = Path("fondant/api/static/css/site.css").read_text()
+
+    for status in ("queued", "running", "success", "failed", "skipped", "cancelled"):
+        assert f".status-{status}" in stylesheet
 
 
 @pytest.mark.asyncio
@@ -820,8 +884,9 @@ async def test_update_data_post_redirects_unauthenticated_users_to_login(
 
 @pytest.mark.asyncio
 async def test_update_data_blank_post_shows_validation_error(
-    web_client: httpx.AsyncClient,
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
+    web_client, _session_factory = update_data_job_client
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -838,8 +903,9 @@ async def test_update_data_blank_post_shows_validation_error(
 
 @pytest.mark.asyncio
 async def test_update_data_malformed_post_preserves_input_and_shows_error(
-    web_client: httpx.AsyncClient,
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
+    web_client, _session_factory = update_data_job_client
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -856,8 +922,9 @@ async def test_update_data_malformed_post_preserves_input_and_shows_error(
 
 @pytest.mark.asyncio
 async def test_update_data_post_rejects_invalid_isin_checksum(
-    web_client: httpx.AsyncClient,
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
+    web_client, _session_factory = update_data_job_client
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -918,9 +985,11 @@ async def test_update_data_valid_post_creates_queued_jobs_and_shows_status(
     assert response.text.index("<td>IE00BMTX1Y45</td>") < response.text.index(
         "<td>LU1681044993</td>"
     )
-    assert response.text.count("<td>IE00BMTX1Y45</td>") == 1
-    assert response.text.count('<span class="status-pill status-queued">queued</span>') == 3
+    assert response.text.count("<td>IE00BMTX1Y45</td>") == 2
+    assert response.text.count('<span class="status-pill status-queued">queued</span>') == 6
     assert response.text.count("Queued for update.") >= 3
+    assert "<h2>Recent update jobs</h2>" in response.text
+    assert response.text.count("<td>admin</td>") == 3
     assert "field-error" not in response.text
 
     async with session_factory() as session:

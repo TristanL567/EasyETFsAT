@@ -13,6 +13,7 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, execute_business_query
@@ -29,6 +30,7 @@ router = APIRouter(include_in_schema=False)
 
 LEGAL_ENTITY_TYPES = ("natural person", "business", "Stiftung")
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+RECENT_UPDATE_DATA_JOB_LIMIT = 20
 BUSINESS_QUERY_CSV_HEADERS = (
     "query_name",
     "isin",
@@ -324,6 +326,7 @@ def _render_app_shell(
     update_data_errors: dict[str, str] | None = None,
     update_data_preview_isins: tuple[str, ...] = (),
     update_data_job_results: tuple[dict[str, str], ...] = (),
+    update_data_recent_jobs: tuple[dict[str, str], ...] = (),
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
@@ -349,6 +352,7 @@ def _render_app_shell(
             "update_data_errors": update_data_errors or {},
             "update_data_preview_isins": update_data_preview_isins,
             "update_data_job_results": update_data_job_results,
+            "update_data_recent_jobs": update_data_recent_jobs,
             "tax_lines": TAX_LINES,
         },
     )
@@ -450,8 +454,16 @@ async def app_search(request: Request, q: str = "") -> HTMLResponse:
 
 
 @router.get("/app/update-data", response_class=HTMLResponse)
-async def app_update_data(request: Request) -> HTMLResponse:
-    return _render_app_shell(request, "update-data")
+async def app_update_data(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    recent_jobs = await _recent_update_data_jobs(session)
+    return _render_app_shell(request, "update-data", update_data_recent_jobs=recent_jobs)
 
 
 @router.post("/app/update-data", response_class=HTMLResponse)
@@ -469,6 +481,7 @@ async def submit_update_data(
     job_results: tuple[dict[str, str], ...] = ()
     if not errors:
         job_results = await _queue_update_data_jobs(session, normalized_isins, username)
+    recent_jobs = await _recent_update_data_jobs(session)
 
     return _render_app_shell(
         request,
@@ -477,7 +490,38 @@ async def submit_update_data(
         update_data_errors=errors,
         update_data_preview_isins=normalized_isins,
         update_data_job_results=job_results,
+        update_data_recent_jobs=recent_jobs,
     )
+
+
+async def _recent_update_data_jobs(session: AsyncSession) -> tuple[dict[str, str], ...]:
+    jobs = (
+        await session.scalars(
+            select(INGJOB)
+            .order_by(INGJOB.created_at.desc(), INGJOB.id.desc())
+            .limit(RECENT_UPDATE_DATA_JOB_LIMIT)
+        )
+    ).all()
+
+    return tuple(
+        {
+            "isin": job.isin,
+            "status": job.status,
+            "requested_user": job.requested_user or "-",
+            "created_at": _format_update_data_timestamp(job.created_at),
+            "started_at": _format_update_data_timestamp(job.started_at),
+            "finished_at": _format_update_data_timestamp(job.finished_at),
+            "message": job.message or "-",
+            "error_detail": job.error_detail or "-",
+        }
+        for job in jobs
+    )
+
+
+def _format_update_data_timestamp(value: object) -> str:
+    if value is None:
+        return "-"
+    return str(value)
 
 
 async def _queue_update_data_jobs(

@@ -257,10 +257,6 @@ h1 {
   color: var(--muted);
 }
 
-.future-status-panel {
-  max-width: 42rem;
-}
-
 .search-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -328,8 +324,18 @@ h1 {
   font-weight: 700;
 }
 
-.update-job-table {
+.update-job-table,
+.update-job-history-table {
   min-width: 36rem;
+}
+
+.update-job-history {
+  max-width: 58rem;
+  margin-top: 1rem;
+}
+
+.update-job-history-table {
+  min-width: 72rem;
 }
 
 .status-pill {
@@ -348,9 +354,29 @@ h1 {
   background: #d7f2ee;
 }
 
+.status-running {
+  color: #174a7c;
+  background: #dbeafe;
+}
+
+.status-success {
+  color: #155724;
+  background: #d8f3dc;
+}
+
+.status-failed {
+  color: #8a1f11;
+  background: #f8d7da;
+}
+
 .status-skipped {
   color: #6b4e00;
   background: #f7e7b7;
+}
+
+.status-cancelled {
+  color: #4b5563;
+  background: #e5e7eb;
 }
 
 .empty-state {
