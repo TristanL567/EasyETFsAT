@@ -62,6 +62,7 @@ BUSINESS_QUERY_SUBCATEGORY_LABELS = {
 BUSINESS_QUERY_TAX_YEAR_OPTIONS = tuple(
     str(year) for year in range(date.today().year, date.today().year - 8, -1)
 )
+BUSINESS_QUERY_TAX_FIELD_METADATA = {tax_line.line_code: tax_line for tax_line in TAX_LINES}
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 RECENT_UPDATE_DATA_JOB_LIMIT = 20
 BACKGROUND_UPDATE_DATA_JOB_LIMIT = 10
@@ -475,6 +476,7 @@ def _render_app_shell(
             "business_query_subcategory_labels": BUSINESS_QUERY_SUBCATEGORY_LABELS,
             "all_available_years": ALL_AVAILABLE_YEARS,
             "business_query_tax_year_options": BUSINESS_QUERY_TAX_YEAR_OPTIONS,
+            "business_query_tax_field_metadata": BUSINESS_QUERY_TAX_FIELD_METADATA,
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
             "business_query_status": business_query_status,

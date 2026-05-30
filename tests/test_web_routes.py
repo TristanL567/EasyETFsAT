@@ -320,6 +320,22 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert "<h2>Saved queries</h2>" in response.text
         assert "No saved queries yet." in response.text
         assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
+        assert "How to read and reuse a query" in response.text
+        assert "PA mit Option means private assets with option" in response.text
+        assert "PA ohne Option means private assets without option" in response.text
+        assert "BV mit Option means business assets with option" in response.text
+        assert "BV ohne Option means business assets without option" in response.text
+        assert "BV jur. Person means business assets for a legal person" in response.text
+        assert "Stiftung means foundation assets" in response.text
+        assert (
+            "All available years runs the query without a tax-year filter."
+            in response.text
+        )
+        assert "The amount multiplies each base tax value" in response.text
+        assert (
+            "Load one later, replace or paste the ISINs you want to review, then rerun"
+            in response.text
+        )
         assert 'type="submit"' in response.text
 
         normalized_html = " ".join(response.text.split())
@@ -851,7 +867,7 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<th scope=\"col\">Calculated value</th>" in response.text
     assert "<td>IE00BMTX1Y45</td>" in response.text
     assert "<td>2025</td>" in response.text
-    assert "<td>K40 - Taxable income</td>" in response.text
+    assert "K40 - Taxable income" in response.text
     assert "<td>BVM</td>" in response.text
     assert "<td>10.0000000000</td>" in response.text
     assert "<td>1000.50</td>" in response.text
@@ -867,6 +883,126 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert query.subcategory_key == "business_bv_without_option"
     assert query.tax_year_filter == "2025"
     assert query.amount_multiplier == Decimal("1000.50")
+
+
+@pytest.mark.asyncio
+async def test_business_query_result_rows_expose_tax_field_metadata(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = tuple(
+        BusinessQueryResultRow(
+            query_name="Tax metadata",
+            isin="IE00BMTX1Y45",
+            tax_year=2025,
+            oekb_report_id=1001,
+            fund_currency="EUR",
+            report_date=date(2025, 6, 15),
+            fx_rate=Decimal("1.0000000000"),
+            legal_entity_category="BVM",
+            tax_field_code=tax_line.line_code,
+            tax_field_label=tax_line.name_en,
+            base_eur_value=Decimal("10.0000000000"),
+            amount_multiplier=Decimal("1"),
+            calculated_eur_value=Decimal("10.0000000000"),
+        )
+        for tax_line in TAX_LINES
+        if tax_line.line_code in {"K40", "K61", "K62"}
+    )
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(query=query, rows=rows)
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Tax metadata",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "amount": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.text.count("<summary>Field details</summary>") == 3
+    for tax_line in TAX_LINES:
+        if tax_line.line_code in {"K40", "K61", "K62"}:
+            assert f"<dd>{tax_line.line_code}</dd>" in response.text
+            assert f"<dd>{tax_line.name_de}</dd>" in response.text
+            assert f"<dd>{tax_line.description}</dd>" in response.text
+            assert f"<dd>{tax_line.usage_note}</dd>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_result_rows_render_when_tax_field_metadata_is_missing(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name="Missing metadata",
+                    isin="IE00BMTX1Y45",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.0000000000"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=Decimal("10.0000000000"),
+                    amount_multiplier=Decimal("1"),
+                    calculated_eur_value=Decimal("10.0000000000"),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+    monkeypatch.setattr(web_routes, "BUSINESS_QUERY_TAX_FIELD_METADATA", {})
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Missing metadata",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "amount": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Query results</h2>" in response.text
+    assert "<td>IE00BMTX1Y45</td>" in response.text
+    assert "<td>BVM</td>" in response.text
+    assert "K40 - Taxable income" in response.text
+    assert "<summary>Field details</summary>" not in response.text
 
 
 @pytest.mark.asyncio
@@ -1199,7 +1335,7 @@ async def test_business_query_stiftung_uses_fixed_subcategory_workflow(
     assert 'id="subcategory-key"' not in response.text
     assert "All private investor categories" not in response.text
     assert "All business categories" not in response.text
-    assert "BV mit Option" not in response.text
+    assert '<option value="business_bv_with_option">BV mit Option</option>' not in response.text
     assert "Stiftung uses the fixed Stiftung category." in response.text
     assert "<dt>Subcategory</dt>" in response.text
     assert "<dd>Stiftung</dd>" in response.text
@@ -1852,6 +1988,20 @@ async def test_documentation_page_renders_authenticated_help_content(
     assert "PVM" in response.text
     assert "BVO" in response.text
     assert "STI" in response.text
+    assert "PA mit Option means private assets with option" in response.text
+    assert "PA ohne Option means private assets without option" in response.text
+    assert "BV mit Option means business assets with option" in response.text
+    assert "BV ohne Option means business assets without option" in response.text
+    assert "BV jur. Person means business assets for a legal person" in response.text
+    assert "Stiftung means foundation assets" in response.text
+    assert (
+        "All available years runs across every tax year available to BusinessQuery"
+        in response.text
+    )
+    assert (
+        "save a rule, load it later, replace or paste ISINs, and rerun the query"
+        in response.text
+    )
     assert "amount multiplier" in response.text
     assert "CSV exports include" in response.text
     assert "Search helps find available fund tax data" in response.text

@@ -35,6 +35,12 @@
             <h1 id="app-title">{{ section.title }}</h1>
             <p class="summary">{{ section.summary }}</p>
             {% if section.label == "BusinessQuery" %}
+            <div class="guidance-panel business-query-guidance" aria-label="BusinessQuery guidance">
+              <h2>How to read and reuse a query</h2>
+              <p>Choose the tax category that matches the investor: PA mit Option means private assets with option, PA ohne Option means private assets without option, BV mit Option means business assets with option, BV ohne Option means business assets without option, BV jur. Person means business assets for a legal person, and Stiftung means foundation assets.</p>
+              <p>All available years runs the query without a tax-year filter. The amount multiplies each base tax value, so the calculated value is the tax value scaled to the entered holding amount.</p>
+              <p>Saved queries store the rule. Load one later, replace or paste the ISINs you want to review, then rerun the same structured query.</p>
+            </div>
             <form class="business-query-form" method="post" action="/app/business-query" aria-label="BusinessQuery setup" novalidate>
               <p class="form-note">
                 Submit structured inputs to calculate Austrian ETF tax values.
@@ -190,10 +196,36 @@
                     </thead>
                     <tbody>
                       {% for row in business_query_result.rows %}
+                      {% set tax_field_metadata = business_query_tax_field_metadata.get(row.tax_field_code) %}
                       <tr>
                         <td>{{ row.isin }}</td>
                         <td>{{ row.tax_year if row.tax_year is not none else "-" }}</td>
-                        <td>{{ row.tax_field_code }} - {{ row.tax_field_label }}</td>
+                        <td>
+                          <span class="tax-field-main">{{ row.tax_field_code }} - {{ row.tax_field_label }}</span>
+                          {% if tax_field_metadata %}
+                          <details class="tax-field-details">
+                            <summary>Field details</summary>
+                            <dl>
+                              <div>
+                                <dt>Code</dt>
+                                <dd>{{ tax_field_metadata.line_code }}</dd>
+                              </div>
+                              <div>
+                                <dt>German label</dt>
+                                <dd>{{ tax_field_metadata.name_de }}</dd>
+                              </div>
+                              <div>
+                                <dt>Description</dt>
+                                <dd>{{ tax_field_metadata.description }}</dd>
+                              </div>
+                              <div>
+                                <dt>Usage</dt>
+                                <dd>{{ tax_field_metadata.usage_note }}</dd>
+                              </div>
+                            </dl>
+                          </details>
+                          {% endif %}
+                        </td>
                         <td>{{ row.legal_entity_category }}</td>
                         <td>{{ row.base_eur_value if row.base_eur_value is not none else "-" }}</td>
                         <td>{{ row.amount_multiplier }}</td>
@@ -420,9 +452,12 @@
             <div class="placeholder-panel">
               <h2>BusinessQuery reference</h2>
               <p>BusinessQuery queries V2_TAXDATEUR only.</p>
+              <p>PA mit Option means private assets with option; PA ohne Option means private assets without option. BV mit Option means business assets with option; BV ohne Option means business assets without option; BV jur. Person means business assets for a legal person. Stiftung means foundation assets.</p>
               <p>Legal entity mappings: natural person uses PVM and PVO; business uses BVM, BVO, and BVJ; Stiftung uses STI.</p>
               <p>Supported tax fields are K40, K61, and K62.</p>
+              <p>All available years runs across every tax year available to BusinessQuery instead of filtering to one year.</p>
               <p>The base value is the EUR value from the tax data before applying your entered amount. The calculated value is the base value multiplied by the amount multiplier.</p>
+              <p>To reuse a saved query, save a rule, load it later, replace or paste ISINs, and rerun the query.</p>
               <p>CSV exports include the query name, ISIN, tax year, tax field, legal entity category, base EUR value, amount multiplier, and calculated EUR value.</p>
               <p>Search helps find available fund tax data by ISIN or fund/security name, then sends a selected ISIN into BusinessQuery.</p>
               <h2>Tax field reference</h2>
