@@ -208,6 +208,11 @@
               </div>
               {% endif %}
             </div>
+            {% elif section.label == "Update Data" %}
+            <div class="placeholder-panel">
+              <h2>Update Data placeholder</h2>
+              <p>This authenticated section will support adding one or more ISINs, fetching data for new ISINs, and checking existing ISINs for newer OeKB data.</p>
+            </div>
             {% else %}
             <div class="placeholder-panel">
               <h2>BusinessQuery reference</h2>

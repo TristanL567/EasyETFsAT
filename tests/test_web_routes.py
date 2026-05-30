@@ -79,6 +79,7 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/app" in route_paths
     assert "/app/business-query" in route_paths
     assert "/app/search" in route_paths
+    assert "/app/update-data" in route_paths
     assert "/app/documentation" in route_paths
     assert "/health" in route_paths
     assert "/etf/{isin}/tax" in route_paths
@@ -139,7 +140,13 @@ async def test_login_fails_generically_without_session_cookie(
 async def test_app_redirects_unauthenticated_users_to_login(
     web_client: httpx.AsyncClient,
 ) -> None:
-    for path in ["/app", "/app/business-query", "/app/search", "/app/documentation"]:
+    for path in [
+        "/app",
+        "/app/business-query",
+        "/app/search",
+        "/app/update-data",
+        "/app/documentation",
+    ]:
         response = await web_client.get(path)
 
         assert response.status_code == 303
@@ -159,13 +166,21 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
     assert 'aria-label="Primary sections"' in response.text
-    assert response.text.count('class="portal-nav-link') == 3
+    assert response.text.count('class="portal-nav-link') == 4
     assert ">BusinessQuery<" in response.text
     assert ">Search<" in response.text
+    assert ">Update Data<" in response.text
     assert ">Documentation<" in response.text
     assert 'href="/app/business-query"' in response.text
     assert 'href="/app/search"' in response.text
+    assert 'href="/app/update-data"' in response.text
     assert 'href="/app/documentation"' in response.text
+    normalized_html = " ".join(response.text.split())
+    assert (
+        ">BusinessQuery</a> <a class=\"portal-nav-link\" href=\"/app/search\" >Search</a> "
+        "<a class=\"portal-nav-link\" href=\"/app/update-data\" >Update Data</a> "
+        "<a class=\"portal-nav-link\" href=\"/app/documentation\" >Documentation</a>"
+    ) in normalized_html
     assert "Signed in as <strong>admin</strong>" in response.text
     assert "<h1 id=\"app-title\">BusinessQuery</h1>" in response.text
     assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
@@ -712,6 +727,30 @@ async def test_search_renders_empty_database_state_without_searching(
 
     assert response.status_code == 200
     assert "No fund data is available in the database yet." in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_data_page_renders_authenticated_placeholder(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/update-data")
+
+    assert response.status_code == 200
+    assert "<title>Update Data - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Update Data</h1>' in response.text
+    assert "Prepare future authenticated fund data refresh workflows." in response.text
+    assert "<h2>Update Data placeholder</h2>" in response.text
+    assert "adding one or more ISINs" in response.text
+    assert "fetching data for new ISINs" in response.text
+    assert "checking existing ISINs for newer OeKB data" in response.text
+    assert '<form class="business-query-form"' not in response.text
+    assert '<form class="search-form"' not in response.text
 
 
 @pytest.mark.asyncio

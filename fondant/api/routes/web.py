@@ -53,6 +53,12 @@ APP_SECTIONS = {
         "title": "Search",
         "summary": "Discover available fund tax data by ISIN or security name.",
     },
+    "update-data": {
+        "label": "Update Data",
+        "path": "/app/update-data",
+        "title": "Update Data",
+        "summary": "Prepare future authenticated fund data refresh workflows.",
+    },
     "documentation": {
         "label": "Documentation",
         "path": "/app/documentation",
@@ -432,6 +438,11 @@ async def app_search(request: Request, q: str = "") -> HTMLResponse:
         search_submitted=bool(search_query),
         search_database_has_records=database_has_records,
     )
+
+
+@router.get("/app/update-data", response_class=HTMLResponse)
+async def app_update_data(request: Request) -> HTMLResponse:
+    return _render_app_shell(request, "update-data")
 
 
 @router.get("/app/documentation", response_class=HTMLResponse)
