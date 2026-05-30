@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from datetime import date, datetime
 from decimal import Decimal
@@ -991,6 +992,45 @@ async def test_update_data_invalid_post_creates_no_jobs(
 
     assert job_count == 0
     assert background_calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_data_background_trigger_failure_is_logged_and_contained(
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    web_client, session_factory = update_data_job_client
+    background_calls: list[int] = []
+
+    async def failing_run_queued_update_jobs(*, limit: int = 10) -> None:
+        background_calls.append(limit)
+        raise RuntimeError("runner unavailable")
+
+    monkeypatch.setattr(web_routes, "run_queued_update_jobs", failing_run_queued_update_jobs)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    with caplog.at_level(logging.ERROR, logger=web_routes.logger.name):
+        response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y45"})
+
+    assert response.status_code == 200
+    assert "<h2>Update job status</h2>" in response.text
+    assert '<span class="status-pill status-queued">queued</span>' in response.text
+    assert background_calls == [10]
+    assert "Background update-data job execution failed." in caplog.text
+    assert "runner unavailable" in caplog.text
+
+    async with session_factory() as session:
+        jobs = (await session.scalars(select(INGJOB).order_by(INGJOB.id))).all()
+
+    assert [job.isin for job in jobs] == ["IE00BMTX1Y45"]
+    assert [job.status for job in jobs] == ["queued"]
+    assert [job.message for job in jobs] == ["Queued for update."]
 
 
 @pytest.mark.asyncio
