@@ -192,7 +192,8 @@ h1 {
 }
 
 .business-query-form,
-.search-form {
+.search-form,
+.update-data-form {
   display: grid;
   gap: 0.75rem;
   max-width: 42rem;
@@ -204,14 +205,16 @@ h1 {
 }
 
 .business-query-form label,
-.search-form label {
+.search-form label,
+.update-data-form label {
   font-weight: 700;
 }
 
 .business-query-form input,
 .business-query-form textarea,
 .business-query-form select,
-.search-form input {
+.search-form input,
+.update-data-form textarea {
   width: 100%;
   box-sizing: border-box;
   min-height: 2.75rem;
@@ -228,8 +231,33 @@ h1 {
   border-color: #8a1f11;
 }
 
-.business-query-form textarea {
+.business-query-form textarea,
+.update-data-form textarea {
   resize: vertical;
+}
+
+.update-data-form textarea:disabled {
+  color: var(--muted);
+  background: #f2f5f4;
+  cursor: not-allowed;
+}
+
+.guidance-panel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid #93c5bd;
+  border-radius: 8px;
+  background: #f0faf8;
+}
+
+.guidance-panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.future-status-panel {
+  max-width: 42rem;
 }
 
 .search-controls {
@@ -385,7 +413,8 @@ h1 {
 .business-query-form input:focus-visible,
 .business-query-form textarea:focus-visible,
 .business-query-form select:focus-visible,
-.search-form input:focus-visible {
+.search-form input:focus-visible,
+.update-data-form textarea:focus-visible {
   outline: 3px solid #f0b429;
   outline-offset: 3px;
 }

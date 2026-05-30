@@ -730,7 +730,7 @@ async def test_search_renders_empty_database_state_without_searching(
 
 
 @pytest.mark.asyncio
-async def test_update_data_page_renders_authenticated_placeholder(
+async def test_update_data_page_renders_authenticated_input_form(
     web_client: httpx.AsyncClient,
 ) -> None:
     login_response = await web_client.post(
@@ -745,12 +745,35 @@ async def test_update_data_page_renders_authenticated_placeholder(
     assert "<title>Update Data - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Update Data</h1>' in response.text
     assert "Prepare future authenticated fund data refresh workflows." in response.text
-    assert "<h2>Update Data placeholder</h2>" in response.text
-    assert "adding one or more ISINs" in response.text
-    assert "fetching data for new ISINs" in response.text
-    assert "checking existing ISINs for newer OeKB data" in response.text
+    assert '<form class="update-data-form" aria-label="Update Data ISIN entry">' in response.text
+    assert '<label for="update-isins">ISIN input area</label>' in response.text
+    assert 'id="update-isins"' in response.text
+    assert 'name="isins"' in response.text
+    assert '<textarea' in response.text
+    assert "disabled" in response.text
+    assert "Update ISIN" in response.text
+    assert '<button class="primary-action" type="button" disabled>' in response.text
+    assert "New ISINs will eventually fetch OeKB data" in response.text
+    assert "Existing ISINs will eventually check OeKB for newer data" in response.text
+    assert "This version does not run ingestion yet." in response.text
+    assert "Future job status and history" in response.text
+    assert "Future refresh status and history will appear here." in response.text
+    assert 'method="post" action="/app/update-data"' not in response.text
     assert '<form class="business-query-form"' not in response.text
     assert '<form class="search-form"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_data_has_no_post_route(web_client: httpx.AsyncClient) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y45"})
+
+    assert response.status_code == 405
 
 
 @pytest.mark.asyncio

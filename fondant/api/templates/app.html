@@ -209,9 +209,34 @@
               {% endif %}
             </div>
             {% elif section.label == "Update Data" %}
-            <div class="placeholder-panel">
-              <h2>Update Data placeholder</h2>
-              <p>This authenticated section will support adding one or more ISINs, fetching data for new ISINs, and checking existing ISINs for newer OeKB data.</p>
+            <form class="update-data-form" aria-label="Update Data ISIN entry">
+              <p class="form-note">
+                Enter one or more ISINs to prepare a future OeKB data refresh.
+              </p>
+
+              <label for="update-isins">ISIN input area</label>
+              <textarea
+                id="update-isins"
+                name="isins"
+                rows="6"
+                placeholder="Enter one ISIN per line"
+                disabled
+              ></textarea>
+
+              <div class="guidance-panel" aria-label="Update Data guidance">
+                <p>New ISINs will eventually fetch OeKB data for funds not yet available in EasyETFsAT.</p>
+                <p>Existing ISINs will eventually check OeKB for newer data than the records already stored.</p>
+                <p>This version does not run ingestion yet. The form is visible for review only and does not submit data.</p>
+              </div>
+
+              <button class="primary-action" type="button" disabled>
+                Update ISIN
+              </button>
+            </form>
+
+            <div class="placeholder-panel future-status-panel" aria-label="Future job status and history">
+              <h2>Future job status and history</h2>
+              <p>No update jobs are available in this version. Future refresh status and history will appear here.</p>
             </div>
             {% else %}
             <div class="placeholder-panel">
