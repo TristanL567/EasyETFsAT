@@ -16,6 +16,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fondant import update_data
@@ -27,7 +28,7 @@ from fondant.business_query import (
     execute_business_query,
 )
 from fondant.config import Settings, get_settings
-from fondant.db.models import INGJOB
+from fondant.db.models import BQSAVED, INGJOB
 from fondant.db.session import get_session
 from fondant.search import FundSearchResult, has_available_fund_data, search_available_funds
 from fondant.tax_registry import TAX_LINES
@@ -112,6 +113,7 @@ def _empty_business_query_form() -> dict[str, str]:
         "subcategory_key": DEFAULT_SUBCATEGORY_KEYS[LEGAL_ENTITY_TYPES[0]],
         "tax_year_filter": ALL_AVAILABLE_YEARS,
         "amount": "",
+        "note": "",
     }
 
 
@@ -130,6 +132,8 @@ def _normalize_isin_input(value: str) -> list[str]:
 
 def _validate_business_query_form(
     form_values: dict[str, str],
+    *,
+    require_isins: bool = True,
 ) -> tuple[dict[str, str], dict[str, object] | None]:
     errors: dict[str, str] = {}
     query_name = form_values["query_name"].strip()
@@ -138,13 +142,14 @@ def _validate_business_query_form(
     subcategory_key = form_values["subcategory_key"].strip()
     tax_year_filter = form_values["tax_year_filter"].strip()
     amount_text = form_values["amount"].strip()
+    note = form_values["note"].strip()
 
     if not query_name:
         errors["query_name"] = "Enter a custom query name."
 
-    if not normalized_isins:
+    if not normalized_isins and require_isins:
         errors["isins"] = "Enter at least one ISIN."
-    else:
+    elif normalized_isins:
         invalid_isins = [isin for isin in normalized_isins if not ISIN_PATTERN.fullmatch(isin)]
         if invalid_isins:
             errors["isins"] = "Enter ISIN-like values such as IE00BMTX1Y45."
@@ -190,6 +195,7 @@ def _validate_business_query_form(
         "subcategory_key": subcategory_key,
         "tax_year_filter": tax_year_filter,
         "amount": str(amount),
+        "note": note,
     }
 
 
@@ -204,6 +210,7 @@ def _business_query_form_values(form: Any) -> dict[str, str]:
         ),
         "tax_year_filter": str(form.get("tax_year_filter", "") or ALL_AVAILABLE_YEARS),
         "amount": str(form.get("amount", "")),
+        "note": str(form.get("note", "")),
     }
 
 
@@ -215,6 +222,7 @@ def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, str
         "subcategory_key": str(preview["subcategory_key"]),
         "tax_year_filter": str(preview["tax_year_filter"]),
         "amount": str(preview["amount"]),
+        "note": str(preview["note"]),
     }
 
 
@@ -248,6 +256,48 @@ def _business_query_result_to_csv(result: BusinessQueryResult) -> str:
             }
         )
     return output.getvalue()
+
+
+def _format_business_query_tax_year_filter(value: str) -> str:
+    if value == ALL_AVAILABLE_YEARS:
+        return "All available years"
+    return value
+
+
+def _format_optional_timestamp(value: object) -> str:
+    if value is None:
+        return "-"
+    return str(value)
+
+
+async def _saved_business_queries(
+    session: AsyncSession,
+    username: str,
+) -> tuple[dict[str, str], ...]:
+    saved_queries = (
+        await session.scalars(
+            select(BQSAVED)
+            .where(BQSAVED.owner_username == username)
+            .order_by(BQSAVED.updated_at.desc(), BQSAVED.id.desc())
+        )
+    ).all()
+
+    return tuple(
+        {
+            "query_name": saved_query.query_name,
+            "legal_entity_type": saved_query.legal_entity_type,
+            "subcategory_label": BUSINESS_QUERY_SUBCATEGORY_LABELS.get(
+                saved_query.subcategory_key,
+                saved_query.subcategory_key,
+            ),
+            "tax_year_filter": _format_business_query_tax_year_filter(
+                saved_query.tax_year_filter
+            ),
+            "amount": str(saved_query.amount),
+            "updated_at": _format_optional_timestamp(saved_query.updated_at),
+        }
+        for saved_query in saved_queries
+    )
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -378,7 +428,9 @@ def _render_app_shell(
     *,
     business_query_form: dict[str, str] | None = None,
     business_query_errors: dict[str, str] | None = None,
+    business_query_status: str = "",
     business_query_result: BusinessQueryResult | None = None,
+    saved_business_queries: tuple[dict[str, str], ...] = (),
     search_query: str = "",
     search_results: tuple[FundSearchResult, ...] = (),
     search_submitted: bool = False,
@@ -408,7 +460,9 @@ def _render_app_shell(
             "business_query_tax_year_options": BUSINESS_QUERY_TAX_YEAR_OPTIONS,
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
+            "business_query_status": business_query_status,
             "business_query_result": business_query_result,
+            "saved_business_queries": saved_business_queries,
             "search_query": search_query,
             "search_results": search_results,
             "search_submitted": search_submitted,
@@ -424,16 +478,34 @@ def _render_app_shell(
 
 
 @router.get("/app", response_class=HTMLResponse)
-async def app_home(request: Request) -> HTMLResponse:
-    return _render_app_shell(request, "business-query")
+async def app_home(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+    return _render_app_shell(
+        request,
+        "business-query",
+        saved_business_queries=await _saved_business_queries(session, username),
+    )
 
 
 @router.get("/app/business-query", response_class=HTMLResponse)
-async def app_business_query(request: Request, isins: str = "") -> HTMLResponse:
+async def app_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    isins: str = "",
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
     return _render_app_shell(
         request,
         "business-query",
         business_query_form=_prefilled_business_query_form(isins),
+        saved_business_queries=await _saved_business_queries(session, username),
     )
 
 
@@ -461,6 +533,51 @@ async def submit_business_query(
         business_query_form=form_values,
         business_query_errors=errors,
         business_query_result=result,
+        saved_business_queries=await _saved_business_queries(session, username),
+    )
+
+
+@router.post("/app/business-query/save", response_class=HTMLResponse)
+async def save_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    form_values = _business_query_form_values(form)
+    errors, preview = _validate_business_query_form(form_values, require_isins=False)
+    status = ""
+    if preview is not None:
+        form_values = _normalized_business_query_form(preview)
+        saved_query = BQSAVED(
+            owner_username=username,
+            query_name=str(preview["query_name"]),
+            legal_entity_type=str(preview["legal_entity_type"]),
+            subcategory_key=str(preview["subcategory_key"]),
+            tax_year_filter=str(preview["tax_year_filter"]),
+            amount=Decimal(str(preview["amount"])),
+            note=str(preview["note"]) or None,
+            default_isins=cast(list[str], preview["isins"]) or None,
+        )
+        session.add(saved_query)
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            errors["query_name"] = "A saved query with this name already exists."
+        else:
+            status = "Saved query created."
+
+    return _render_app_shell(
+        request,
+        "business-query",
+        business_query_form=form_values,
+        business_query_errors=errors,
+        business_query_status=status,
+        saved_business_queries=await _saved_business_queries(session, username),
     )
 
 
@@ -482,6 +599,7 @@ async def export_business_query(
             "business-query",
             business_query_form=form_values,
             business_query_errors=errors,
+            saved_business_queries=await _saved_business_queries(session, username),
         )
 
     result = await execute_business_query(session, _business_query_input_from_preview(preview))

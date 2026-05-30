@@ -21,23 +21,73 @@ from fondant.api.main import create_app
 from fondant.api.routes import web as web_routes
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, BusinessQueryResultRow
 from fondant.db.base import Base
-from fondant.db.models import INGJOB
+from fondant.db.models import BQSAVED, INGJOB
 from fondant.db.session import get_session
 from fondant.search import FundSearchResult
 from fondant.tax_registry import TAX_LINES
 
 
 @pytest.fixture
-async def web_client() -> httpx.AsyncClient:
+async def web_client() -> AsyncIterator[httpx.AsyncClient]:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
     app = create_app()
+
+    async def _override_session() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _override_session
     transport = httpx.ASGITransport(app=app)
     client = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield client
     await client.aclose()
+    app.dependency_overrides.clear()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest.fixture
 async def update_data_job_client() -> AsyncIterator[
+    tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]]
+]:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    app = create_app()
+
+    async def _override_session() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _override_session
+    transport = httpx.ASGITransport(app=app)
+    client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    yield client, session_factory
+
+    await client.aclose()
+    app.dependency_overrides.clear()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
+
+@pytest.fixture
+async def saved_query_client() -> AsyncIterator[
     tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]]
 ]:
     engine: AsyncEngine = create_async_engine(
@@ -123,6 +173,7 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/login" in route_paths
     assert "/app" in route_paths
     assert "/app/business-query" in route_paths
+    assert "/app/business-query/save" in route_paths
     assert "/app/search" in route_paths
     assert "/app/update-data" in route_paths
     assert "/app/documentation" in route_paths
@@ -261,6 +312,12 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert 'name="tax_year_filter"' in response.text
         assert '<label for="amount">Amount</label>' in response.text
         assert 'name="amount"' in response.text
+        assert '<label for="query-note">Note</label>' in response.text
+        assert 'name="note"' in response.text
+        assert 'formaction="/app/business-query/save"' in response.text
+        assert "Save query" in response.text
+        assert "<h2>Saved queries</h2>" in response.text
+        assert "No saved queries yet." in response.text
         assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
         assert 'type="submit"' in response.text
 
@@ -335,6 +392,237 @@ async def test_business_query_export_redirects_unauthenticated_users_to_login(
 
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
+
+
+@pytest.mark.asyncio
+async def test_business_query_save_redirects_unauthenticated_users_to_login(
+    web_client: httpx.AsyncClient,
+) -> None:
+    response = await web_client.post(
+        "/app/business-query/save",
+        data={
+            "query_name": "Monthly review",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "all_available_years",
+            "amount": "1000",
+        },
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+@pytest.mark.asyncio
+async def test_authenticated_user_can_save_business_query_with_structured_fields(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/save",
+        data={
+            "query_name": "  Monthly review  ",
+            "isins": "ie00bmtx1y45\n lu1681044993 ",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_legal_person",
+            "tax_year_filter": "2025",
+            "amount": "250.75",
+            "note": " Run for model portfolio ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Saved query created." in response.text
+    assert "<h2>Query results</h2>" not in response.text
+    assert "<h2>Saved queries</h2>" in response.text
+    assert "<td>Monthly review</td>" in response.text
+    assert "<td>business</td>" in response.text
+    assert "<td>BV jur. Person</td>" in response.text
+    assert "<td>2025</td>" in response.text
+    assert 'value="Monthly review"' in response.text
+    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert ">Run for model portfolio</textarea>" in response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED))
+
+    assert saved_query is not None
+    assert saved_query.owner_username == "admin"
+    assert saved_query.query_name == "Monthly review"
+    assert saved_query.legal_entity_type == "business"
+    assert saved_query.subcategory_key == "business_bv_legal_person"
+    assert saved_query.tax_year_filter == "2025"
+    assert saved_query.amount == Decimal("250.7500000000")
+    assert saved_query.note == "Run for model portfolio"
+    assert saved_query.default_isins == ["IE00BMTX1Y45", "LU1681044993"]
+
+
+@pytest.mark.asyncio
+async def test_business_query_save_allows_optional_default_isins(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/save",
+        data={
+            "query_name": "No defaults",
+            "isins": " ",
+            "legal_entity_type": "natural person",
+            "subcategory_key": "natural_person_all",
+            "tax_year_filter": "all_available_years",
+            "amount": "100",
+            "note": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Saved query created." in response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED))
+
+    assert saved_query is not None
+    assert saved_query.default_isins is None
+    assert saved_query.note is None
+
+
+@pytest.mark.asyncio
+async def test_business_query_save_duplicate_name_for_same_user_shows_validation_error(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    payload = {
+        "query_name": "Monthly review",
+        "legal_entity_type": "business",
+        "subcategory_key": "business_all",
+        "tax_year_filter": "all_available_years",
+        "amount": "1000",
+    }
+    first_response = await web_client.post("/app/business-query/save", data=payload)
+    assert first_response.status_code == 200
+
+    duplicate_response = await web_client.post("/app/business-query/save", data=payload)
+
+    assert duplicate_response.status_code == 200
+    assert "A saved query with this name already exists." in duplicate_response.text
+    assert "IntegrityError" not in duplicate_response.text
+    assert "UNIQUE constraint" not in duplicate_response.text
+    async with session_factory() as session:
+        saved_queries = (await session.scalars(select(BQSAVED))).all()
+
+    assert len(saved_queries) == 1
+
+
+@pytest.mark.asyncio
+async def test_business_query_save_allows_same_name_for_different_users(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        session.add(
+            BQSAVED(
+                owner_username="alice",
+                query_name="Quarterly review",
+                legal_entity_type="natural person",
+                subcategory_key="natural_person_all",
+                tax_year_filter="all_available_years",
+                amount=Decimal("100.00"),
+            )
+        )
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/save",
+        data={
+            "query_name": "Quarterly review",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "2025",
+            "amount": "250",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Saved query created." in response.text
+    async with session_factory() as session:
+        saved_queries = (
+            await session.scalars(select(BQSAVED).order_by(BQSAVED.owner_username))
+        ).all()
+
+    assert [(query.owner_username, query.query_name) for query in saved_queries] == [
+        ("admin", "Quarterly review"),
+        ("alice", "Quarterly review"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_business_query_saved_list_shows_only_current_user_queries(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        session.add_all(
+            [
+                BQSAVED(
+                    owner_username="admin",
+                    query_name="Admin saved rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_bv_with_option",
+                    tax_year_filter="2025",
+                    amount=Decimal("1000.00"),
+                ),
+                BQSAVED(
+                    owner_username="other-user",
+                    query_name="Other user rule",
+                    legal_entity_type="Stiftung",
+                    subcategory_key="stiftung",
+                    tax_year_filter="all_available_years",
+                    amount=Decimal("500.00"),
+                ),
+            ]
+        )
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/business-query")
+
+    assert response.status_code == 200
+    assert "<h2>Saved queries</h2>" in response.text
+    assert "<td>Admin saved rule</td>" in response.text
+    assert "<td>business</td>" in response.text
+    assert "<td>BV mit Option</td>" in response.text
+    assert "<td>2025</td>" in response.text
+    assert "Other user rule" not in response.text
+    assert "other-user" not in response.text
 
 
 @pytest.mark.asyncio

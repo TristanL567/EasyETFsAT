@@ -131,6 +131,18 @@
               <p class="field-error" id="amount-error">{{ business_query_errors.amount }}</p>
               {% endif %}
 
+              <label for="query-note">Note</label>
+              <textarea
+                id="query-note"
+                name="note"
+                rows="3"
+                placeholder="Optional rule description"
+              >{{ business_query_form.note }}</textarea>
+
+              {% if business_query_status %}
+              <p class="form-success">{{ business_query_status }}</p>
+              {% endif %}
+
               {% if business_query_result is not none %}
               <div class="result-panel" aria-live="polite">
                 <h2>Query results</h2>
@@ -201,7 +213,43 @@
               <button class="primary-action" type="submit">
                 Run query
               </button>
+              <button class="secondary-action" type="submit" formaction="/app/business-query/save" formmethod="post">
+                Save query
+              </button>
             </form>
+            <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
+              <h2>Saved queries</h2>
+              {% if saved_business_queries %}
+              <div class="result-table-wrap">
+                <table class="result-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Query name</th>
+                      <th scope="col">Legal entity type</th>
+                      <th scope="col">Subcategory</th>
+                      <th scope="col">Tax year</th>
+                      <th scope="col">Amount</th>
+                      <th scope="col">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for saved_query in saved_business_queries %}
+                    <tr>
+                      <td>{{ saved_query.query_name }}</td>
+                      <td>{{ saved_query.legal_entity_type }}</td>
+                      <td>{{ saved_query.subcategory_label }}</td>
+                      <td>{{ saved_query.tax_year_filter }}</td>
+                      <td>{{ saved_query.amount }}</td>
+                      <td>{{ saved_query.updated_at }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="empty-state">No saved queries yet.</p>
+              {% endif %}
+            </div>
             {% elif section.label == "Search" %}
             <form class="search-form" method="get" action="/app/search" aria-label="Fund data search">
               <label for="search-query">Search by ISIN or fund/security name</label>
