@@ -174,6 +174,7 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/app" in route_paths
     assert "/app/business-query" in route_paths
     assert "/app/business-query/save" in route_paths
+    assert "/app/business-query/saved/{saved_query_id}/load" in route_paths
     assert "/app/search" in route_paths
     assert "/app/update-data" in route_paths
     assert "/app/documentation" in route_paths
@@ -626,6 +627,154 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
 
 
 @pytest.mark.asyncio
+async def test_current_user_can_load_saved_business_query_with_structured_fields(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Loaded monthly rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_legal_person",
+            tax_year_filter="2025",
+            amount=Decimal("250.75"),
+            note="Stored model portfolio note",
+            default_isins=["IE00BMTX1Y45", "LU1681044993"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
+
+    assert response.status_code == 200
+    assert "Saved query loaded." in response.text
+    assert 'value="Loaded monthly rule"' in response.text
+    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert '<option value="business" selected>business</option>' in response.text
+    assert '<option value="business_bv_legal_person" selected>BV jur. Person</option>' in response.text
+    assert '<option value="2025" selected>2025</option>' in response.text
+    assert 'value="250.7500000000"' in response.text
+    assert ">Stored model portfolio note</textarea>" in response.text
+    assert "<td>Loaded monthly rule</td>" in response.text
+    assert f'action="/app/business-query/saved/{saved_query_id}/load"' in response.text
+    assert "Load</button>" in response.text
+
+
+@pytest.mark.asyncio
+async def test_loaded_saved_business_query_can_replace_isins_and_rerun_existing_post_flow(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Rerun saved rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_without_option",
+            tax_year_filter="2025",
+            amount=Decimal("1000.50"),
+            note="Rerun note",
+            default_isins=["IE00BMTX1Y45"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    load_response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
+    assert load_response.status_code == 200
+
+    rerun_response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Rerun saved rule",
+            "isins": "LU1681044993",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_without_option",
+            "tax_year_filter": "2025",
+            "amount": "1000.5000000000",
+            "note": "Rerun note",
+        },
+    )
+
+    assert rerun_response.status_code == 200
+    assert "<h2>Query results</h2>" in rerun_response.text
+    assert ">LU1681044993</textarea>" in rerun_response.text
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.query_name == "Rerun saved rule"
+    assert query.isins == ("LU1681044993",)
+    assert query.legal_entity_type == "business"
+    assert query.subcategory_key == "business_bv_without_option"
+    assert query.tax_year_filter == "2025"
+    assert query.amount_multiplier == Decimal("1000.5000000000")
+
+
+@pytest.mark.asyncio
+async def test_another_users_saved_business_query_cannot_be_loaded_or_displayed(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="other-user",
+            query_name="Other private rule",
+            legal_entity_type="Stiftung",
+            subcategory_key="stiftung",
+            tax_year_filter="all_available_years",
+            amount=Decimal("500.00"),
+            note="Other user note",
+            default_isins=["US0378331005"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    list_response = await web_client.get("/app/business-query")
+    assert list_response.status_code == 200
+    assert "Other private rule" not in list_response.text
+    assert "US0378331005" not in list_response.text
+    assert f"/app/business-query/saved/{saved_query_id}/load" not in list_response.text
+
+    load_response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
+    assert load_response.status_code == 404
+    assert "Other private rule" not in load_response.text
+    assert "US0378331005" not in load_response.text
+    assert "other-user" not in load_response.text
+
+
+@pytest.mark.asyncio
 async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     web_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -829,6 +978,70 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
     assert query.subcategory_key == "business_bv_legal_person"
     assert query.tax_year_filter == "2025"
     assert query.amount_multiplier == Decimal("1000.50")
+
+
+@pytest.mark.asyncio
+async def test_business_query_export_uses_current_submitted_fields_after_saved_query_load(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Saved export rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_with_option",
+            tax_year_filter="2025",
+            amount=Decimal("100.00"),
+            default_isins=["IE00BMTX1Y45"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    load_response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
+    assert load_response.status_code == 200
+
+    response = await web_client.post(
+        "/app/business-query/export",
+        data={
+            "query_name": "Current export rule",
+            "isins": "LU1681044993",
+            "legal_entity_type": "natural person",
+            "subcategory_key": "natural_person_pa_without_option",
+            "tax_year_filter": "all_available_years",
+            "amount": "777.25",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.query_name == "Current export rule"
+    assert query.isins == ("LU1681044993",)
+    assert query.legal_entity_type == "natural person"
+    assert query.subcategory_key == "natural_person_pa_without_option"
+    assert query.tax_year_filter == "all_available_years"
+    assert query.amount_multiplier == Decimal("777.25")
 
 
 @pytest.mark.asyncio

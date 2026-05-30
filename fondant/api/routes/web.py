@@ -12,7 +12,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
@@ -226,6 +226,22 @@ def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, str
     }
 
 
+def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, str]:
+    form = _empty_business_query_form()
+    form.update(
+        {
+            "query_name": saved_query.query_name,
+            "isins": "\n".join(saved_query.default_isins or []),
+            "legal_entity_type": saved_query.legal_entity_type,
+            "subcategory_key": saved_query.subcategory_key,
+            "tax_year_filter": saved_query.tax_year_filter,
+            "amount": str(saved_query.amount),
+            "note": saved_query.note or "",
+        }
+    )
+    return form
+
+
 def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQueryInput:
     return BusinessQueryInput(
         query_name=str(preview["query_name"]),
@@ -284,6 +300,7 @@ async def _saved_business_queries(
 
     return tuple(
         {
+            "id": str(saved_query.id),
             "query_name": saved_query.query_name,
             "legal_entity_type": saved_query.legal_entity_type,
             "subcategory_label": BUSINESS_QUERY_SUBCATEGORY_LABELS.get(
@@ -577,6 +594,34 @@ async def save_business_query(
         business_query_form=form_values,
         business_query_errors=errors,
         business_query_status=status,
+        saved_business_queries=await _saved_business_queries(session, username),
+    )
+
+
+@router.get("/app/business-query/saved/{saved_query_id}/load", response_class=HTMLResponse)
+async def load_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    saved_query_id: int,
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    saved_query = await session.scalar(
+        select(BQSAVED).where(
+            BQSAVED.id == saved_query_id,
+            BQSAVED.owner_username == username,
+        )
+    )
+    if saved_query is None:
+        raise HTTPException(status_code=404, detail="Saved query not found")
+
+    return _render_app_shell(
+        request,
+        "business-query",
+        business_query_form=_business_query_form_from_saved_query(saved_query),
+        business_query_status="Saved query loaded.",
         saved_business_queries=await _saved_business_queries(session, username),
     )
 

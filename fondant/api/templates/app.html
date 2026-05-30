@@ -230,6 +230,7 @@
                       <th scope="col">Tax year</th>
                       <th scope="col">Amount</th>
                       <th scope="col">Updated</th>
+                      <th scope="col">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -241,6 +242,11 @@
                       <td>{{ saved_query.tax_year_filter }}</td>
                       <td>{{ saved_query.amount }}</td>
                       <td>{{ saved_query.updated_at }}</td>
+                      <td>
+                        <form method="get" action="/app/business-query/saved/{{ saved_query.id }}/load">
+                          <button class="secondary-action" type="submit">Load</button>
+                        </form>
+                      </td>
                     </tr>
                     {% endfor %}
                   </tbody>
