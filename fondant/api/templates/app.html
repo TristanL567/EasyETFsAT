@@ -227,9 +227,15 @@
               {% endif %}
 
               <div class="guidance-panel" aria-label="Update Data guidance">
-                <p>New ISINs will eventually fetch OeKB data for funds not yet available in EasyETFsAT.</p>
-                <p>Existing ISINs will eventually check OeKB for newer data than the records already stored.</p>
-                <p>This version validates submitted ISINs only. It does not run ingestion yet.</p>
+                <p>Valid submissions are queued and processing is started automatically by the web service.</p>
+                <p>The job table is the source of truth for completion; the page does not treat a submitted request as finished until the persisted job status says success.</p>
+                <ul class="status-meaning-list">
+                  <li><strong>queued</strong> means accepted and waiting for or starting processing.</li>
+                  <li><strong>running</strong> means currently being processed.</li>
+                  <li><strong>success</strong> means finished successfully.</li>
+                  <li><strong>failed</strong> means processing failed and error detail should be reviewed.</li>
+                </ul>
+                <p>If processing is interrupted, the manual runner can still be used: <code>python -m fondant.jobs.run_update_data_jobs --limit 10</code></p>
               </div>
 
               {% if update_data_job_results %}

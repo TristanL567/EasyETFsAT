@@ -801,9 +801,23 @@ async def test_update_data_page_renders_authenticated_input_form(
     assert "disabled" not in response.text
     assert "Update ISIN" in response.text
     assert '<button class="primary-action" type="submit">' in response.text
-    assert "New ISINs will eventually fetch OeKB data" in response.text
-    assert "Existing ISINs will eventually check OeKB for newer data" in response.text
-    assert "This version validates submitted ISINs only. It does not run ingestion yet." in response.text
+    assert (
+        "Valid submissions are queued and processing is started automatically by the web service."
+        in response.text
+    )
+    assert "The job table is the source of truth for completion" in response.text
+    assert (
+        "the page does not treat a submitted request as finished until the persisted job status "
+        "says success"
+    ) in response.text
+    assert "<strong>queued</strong> means accepted and waiting for or starting processing." in response.text
+    assert "<strong>running</strong> means currently being processed." in response.text
+    assert "<strong>success</strong> means finished successfully." in response.text
+    assert (
+        "<strong>failed</strong> means processing failed and error detail should be reviewed."
+        in response.text
+    )
+    assert "python -m fondant.jobs.run_update_data_jobs --limit 10" in response.text
     assert "<h2>Recent update jobs</h2>" in response.text
     assert "No update jobs have been queued yet." in response.text
     assert '<form class="business-query-form"' not in response.text
