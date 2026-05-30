@@ -4,9 +4,18 @@ from dataclasses import dataclass
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.pool import StaticPool
 
 from fondant import update_data
 from fondant.api.main import create_app
+from fondant.db.base import Base
+from fondant.db.session import get_session
 
 
 @dataclass(frozen=True)
@@ -78,7 +87,22 @@ async def test_update_data_route_does_not_call_update_service_yet(
         raise AssertionError(f"update service should not be called for {isin}")
 
     monkeypatch.setattr(update_data, "update_single_isin", fail_if_called)
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
     app = create_app()
+
+    async def _override_session() -> AsyncSession:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _override_session
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         login_response = await client.post(
@@ -89,6 +113,11 @@ async def test_update_data_route_does_not_call_update_service_yet(
 
         response = await client.post("/app/update-data", data={"isins": "IE00BMTX1Y45"})
 
+    app.dependency_overrides.clear()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
+
     assert response.status_code == 200
-    assert "<h2>Normalized ISIN preview</h2>" in response.text
-    assert "<li>IE00BMTX1Y45</li>" in response.text
+    assert "<h2>Update job status</h2>" in response.text
+    assert "<td>IE00BMTX1Y45</td>" in response.text

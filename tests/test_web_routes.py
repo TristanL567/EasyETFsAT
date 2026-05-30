@@ -1,14 +1,26 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import date
 from decimal import Decimal
 
 import httpx
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.pool import StaticPool
 
 from fondant.api.main import create_app
 from fondant.api.routes import web as web_routes
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, BusinessQueryResultRow
+from fondant.db.base import Base
+from fondant.db.models import INGJOB
+from fondant.db.session import get_session
 from fondant.search import FundSearchResult
 from fondant.tax_registry import TAX_LINES
 
@@ -20,6 +32,37 @@ async def web_client() -> httpx.AsyncClient:
     client = httpx.AsyncClient(transport=transport, base_url="http://test")
     yield client
     await client.aclose()
+
+
+@pytest.fixture
+async def update_data_job_client() -> AsyncIterator[
+    tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]]
+]:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    app = create_app()
+
+    async def _override_session() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _override_session
+    transport = httpx.ASGITransport(app=app)
+    client = httpx.AsyncClient(transport=transport, base_url="http://test")
+    yield client, session_factory
+
+    await client.aclose()
+    app.dependency_overrides.clear()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -760,7 +803,7 @@ async def test_update_data_page_renders_authenticated_input_form(
     assert "Existing ISINs will eventually check OeKB for newer data" in response.text
     assert "This version validates submitted ISINs only. It does not run ingestion yet." in response.text
     assert "Future job status and history" in response.text
-    assert "Future refresh status and history will appear here." in response.text
+    assert "Background refresh execution and job history are not available in this version." in response.text
     assert '<form class="business-query-form"' not in response.text
     assert '<form class="search-form"' not in response.text
 
@@ -829,9 +872,33 @@ async def test_update_data_post_rejects_invalid_isin_checksum(
 
 
 @pytest.mark.asyncio
-async def test_update_data_valid_post_shows_normalized_deduplicated_preview(
-    web_client: httpx.AsyncClient,
+async def test_update_data_invalid_post_creates_no_jobs(
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
+    web_client, session_factory = update_data_job_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y44"})
+
+    assert response.status_code == 200
+    assert "Enter valid ISINs. Invalid values: IE00BMTX1Y44." in response.text
+    assert "Update job status" not in response.text
+
+    async with session_factory() as session:
+        job_count = len((await session.scalars(select(INGJOB))).all())
+
+    assert job_count == 0
+
+
+@pytest.mark.asyncio
+async def test_update_data_valid_post_creates_queued_jobs_and_shows_status(
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = update_data_job_client
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -844,15 +911,74 @@ async def test_update_data_valid_post_shows_normalized_deduplicated_preview(
     )
 
     assert response.status_code == 200
-    assert "<h2>Normalized ISIN preview</h2>" in response.text
-    assert "<li>IE00BMTX1Y45</li>" in response.text
-    assert "<li>LU1681044993</li>" in response.text
-    assert "<li>US0378331005</li>" in response.text
-    assert response.text.index("<li>IE00BMTX1Y45</li>") < response.text.index(
-        "<li>LU1681044993</li>"
+    assert "<h2>Update job status</h2>" in response.text
+    assert "<td>IE00BMTX1Y45</td>" in response.text
+    assert "<td>LU1681044993</td>" in response.text
+    assert "<td>US0378331005</td>" in response.text
+    assert response.text.index("<td>IE00BMTX1Y45</td>") < response.text.index(
+        "<td>LU1681044993</td>"
     )
-    assert response.text.count("<li>IE00BMTX1Y45</li>") == 1
+    assert response.text.count("<td>IE00BMTX1Y45</td>") == 1
+    assert response.text.count('<span class="status-pill status-queued">queued</span>') == 3
+    assert response.text.count("Queued for update.") >= 3
     assert "field-error" not in response.text
+
+    async with session_factory() as session:
+        jobs = (
+            await session.scalars(select(INGJOB).order_by(INGJOB.id))
+        ).all()
+
+    assert [job.isin for job in jobs] == ["IE00BMTX1Y45", "LU1681044993", "US0378331005"]
+    assert [job.requested_user for job in jobs] == ["admin", "admin", "admin"]
+    assert [job.status for job in jobs] == ["queued", "queued", "queued"]
+    assert [job.message for job in jobs] == [
+        "Queued for update.",
+        "Queued for update.",
+        "Queued for update.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_data_valid_post_skips_duplicate_active_jobs(
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = update_data_job_client
+    async with session_factory() as session:
+        session.add(
+            INGJOB(
+                isin="LU1681044993",
+                requested_user="prior-user",
+                status="running",
+                message="Already running.",
+            )
+        )
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/update-data",
+        data={"isins": "IE00BMTX1Y45 LU1681044993 US0378331005"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Update job status</h2>" in response.text
+    assert '<span class="status-pill status-queued">queued</span>' in response.text
+    assert '<span class="status-pill status-skipped">skipped</span>' in response.text
+    assert "Skipped: active update job already exists." in response.text
+
+    async with session_factory() as session:
+        jobs = (
+            await session.scalars(select(INGJOB).order_by(INGJOB.id))
+        ).all()
+
+    assert [job.isin for job in jobs] == ["LU1681044993", "IE00BMTX1Y45", "US0378331005"]
+    assert [job.status for job in jobs] == ["running", "queued", "queued"]
+    assert [job.requested_user for job in jobs] == ["prior-user", "admin", "admin"]
 
 
 @pytest.mark.asyncio

@@ -232,7 +232,31 @@
                 <p>This version validates submitted ISINs only. It does not run ingestion yet.</p>
               </div>
 
-              {% if update_data_preview_isins %}
+              {% if update_data_job_results %}
+              <div class="result-panel" aria-live="polite">
+                <h2>Update job status</h2>
+                <div class="result-table-wrap">
+                  <table class="result-table update-job-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">ISIN</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in update_data_job_results %}
+                      <tr>
+                        <td>{{ row.isin }}</td>
+                        <td><span class="status-pill status-{{ row.status }}">{{ row.status }}</span></td>
+                        <td>{{ row.message }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {% elif update_data_preview_isins %}
               <div class="result-panel" aria-live="polite">
                 <h2>Normalized ISIN preview</h2>
                 <ul class="isin-preview-list">
@@ -250,7 +274,7 @@
 
             <div class="placeholder-panel future-status-panel" aria-label="Future job status and history">
               <h2>Future job status and history</h2>
-              <p>No update jobs are available in this version. Future refresh status and history will appear here.</p>
+              <p>Queued and skipped submissions appear above. Background refresh execution and job history are not available in this version.</p>
             </div>
             {% else %}
             <div class="placeholder-panel">

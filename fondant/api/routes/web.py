@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, execute_business_query
 from fondant.config import Settings, get_settings
+from fondant.db.models import INGJOB
 from fondant.db.session import get_session
 from fondant.search import FundSearchResult, has_available_fund_data, search_available_funds
 from fondant.tax_registry import TAX_LINES
@@ -322,6 +323,7 @@ def _render_app_shell(
     update_data_input: str = "",
     update_data_errors: dict[str, str] | None = None,
     update_data_preview_isins: tuple[str, ...] = (),
+    update_data_job_results: tuple[dict[str, str], ...] = (),
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
@@ -346,6 +348,7 @@ def _render_app_shell(
             "update_data_input": update_data_input,
             "update_data_errors": update_data_errors or {},
             "update_data_preview_isins": update_data_preview_isins,
+            "update_data_job_results": update_data_job_results,
             "tax_lines": TAX_LINES,
         },
     )
@@ -452,7 +455,10 @@ async def app_update_data(request: Request) -> HTMLResponse:
 
 
 @router.post("/app/update-data", response_class=HTMLResponse)
-async def submit_update_data(request: Request) -> HTMLResponse:
+async def submit_update_data(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
         return RedirectResponse(url="/login", status_code=303)
@@ -460,6 +466,9 @@ async def submit_update_data(request: Request) -> HTMLResponse:
     form = await request.form()
     raw_isins = str(form.get("isins", ""))
     errors, normalized_isins = _validate_update_data_isins(raw_isins)
+    job_results: tuple[dict[str, str], ...] = ()
+    if not errors:
+        job_results = await _queue_update_data_jobs(session, normalized_isins, username)
 
     return _render_app_shell(
         request,
@@ -467,7 +476,45 @@ async def submit_update_data(request: Request) -> HTMLResponse:
         update_data_input=raw_isins if errors else "\n".join(normalized_isins),
         update_data_errors=errors,
         update_data_preview_isins=normalized_isins,
+        update_data_job_results=job_results,
     )
+
+
+async def _queue_update_data_jobs(
+    session: AsyncSession,
+    normalized_isins: tuple[str, ...],
+    username: str,
+) -> tuple[dict[str, str], ...]:
+    results: list[dict[str, str]] = []
+    jobs_to_queue: list[INGJOB] = []
+
+    for isin in normalized_isins:
+        with session.no_autoflush:
+            active_job = await session.scalar(INGJOB.active_for_isin(isin).limit(1))
+        if active_job is not None:
+            results.append(
+                {
+                    "isin": isin,
+                    "status": "skipped",
+                    "message": "Skipped: active update job already exists.",
+                }
+            )
+            continue
+
+        job = INGJOB(
+            isin=isin,
+            requested_user=username,
+            status="queued",
+            message="Queued for update.",
+        )
+        session.add(job)
+        jobs_to_queue.append(job)
+        results.append({"isin": isin, "status": "queued", "message": "Queued for update."})
+
+    if jobs_to_queue:
+        await session.commit()
+
+    return tuple(results)
 
 
 @router.get("/app/documentation", response_class=HTMLResponse)

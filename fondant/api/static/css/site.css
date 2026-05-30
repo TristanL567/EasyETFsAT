@@ -328,6 +328,31 @@ h1 {
   font-weight: 700;
 }
 
+.update-job-table {
+  min-width: 36rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.status-queued {
+  color: #0a4f49;
+  background: #d7f2ee;
+}
+
+.status-skipped {
+  color: #6b4e00;
+  background: #f7e7b7;
+}
+
 .empty-state {
   margin: 0;
   padding: 0.875rem;
