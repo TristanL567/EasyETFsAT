@@ -209,7 +209,7 @@
               {% endif %}
             </div>
             {% elif section.label == "Update Data" %}
-            <form class="update-data-form" aria-label="Update Data ISIN entry">
+            <form class="update-data-form" method="post" action="/app/update-data" aria-label="Update Data ISIN entry" novalidate>
               <p class="form-note">
                 Enter one or more ISINs to prepare a future OeKB data refresh.
               </p>
@@ -220,16 +220,30 @@
                 name="isins"
                 rows="6"
                 placeholder="Enter one ISIN per line"
-                disabled
-              ></textarea>
+                {% if update_data_errors.isins %}aria-invalid="true" aria-describedby="update-isins-error"{% endif %}
+              >{{ update_data_input }}</textarea>
+              {% if update_data_errors.isins %}
+              <p class="field-error" id="update-isins-error">{{ update_data_errors.isins }}</p>
+              {% endif %}
 
               <div class="guidance-panel" aria-label="Update Data guidance">
                 <p>New ISINs will eventually fetch OeKB data for funds not yet available in EasyETFsAT.</p>
                 <p>Existing ISINs will eventually check OeKB for newer data than the records already stored.</p>
-                <p>This version does not run ingestion yet. The form is visible for review only and does not submit data.</p>
+                <p>This version validates submitted ISINs only. It does not run ingestion yet.</p>
               </div>
 
-              <button class="primary-action" type="button" disabled>
+              {% if update_data_preview_isins %}
+              <div class="result-panel" aria-live="polite">
+                <h2>Normalized ISIN preview</h2>
+                <ul class="isin-preview-list">
+                  {% for isin in update_data_preview_isins %}
+                  <li>{{ isin }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+              {% endif %}
+
+              <button class="primary-action" type="submit">
                 Update ISIN
               </button>
             </form>

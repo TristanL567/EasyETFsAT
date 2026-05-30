@@ -319,6 +319,9 @@ def _render_app_shell(
     search_results: tuple[FundSearchResult, ...] = (),
     search_submitted: bool = False,
     search_database_has_records: bool = True,
+    update_data_input: str = "",
+    update_data_errors: dict[str, str] | None = None,
+    update_data_preview_isins: tuple[str, ...] = (),
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
@@ -340,6 +343,9 @@ def _render_app_shell(
             "search_results": search_results,
             "search_submitted": search_submitted,
             "search_database_has_records": search_database_has_records,
+            "update_data_input": update_data_input,
+            "update_data_errors": update_data_errors or {},
+            "update_data_preview_isins": update_data_preview_isins,
             "tax_lines": TAX_LINES,
         },
     )
@@ -445,6 +451,65 @@ async def app_update_data(request: Request) -> HTMLResponse:
     return _render_app_shell(request, "update-data")
 
 
+@router.post("/app/update-data", response_class=HTMLResponse)
+async def submit_update_data(request: Request) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    raw_isins = str(form.get("isins", ""))
+    errors, normalized_isins = _validate_update_data_isins(raw_isins)
+
+    return _render_app_shell(
+        request,
+        "update-data",
+        update_data_input=raw_isins if errors else "\n".join(normalized_isins),
+        update_data_errors=errors,
+        update_data_preview_isins=normalized_isins,
+    )
+
+
 @router.get("/app/documentation", response_class=HTMLResponse)
 async def app_documentation(request: Request) -> HTMLResponse:
     return _render_app_shell(request, "documentation")
+
+
+def _validate_update_data_isins(raw_isins: str) -> tuple[dict[str, str], tuple[str, ...]]:
+    normalized_isins = _normalize_update_data_isin_input(raw_isins)
+    if not normalized_isins:
+        return {"isins": "Enter at least one ISIN."}, ()
+
+    invalid_isins = [isin for isin in normalized_isins if not _has_valid_isin_checksum(isin)]
+    if invalid_isins:
+        invalid_list = ", ".join(invalid_isins[:3])
+        if len(invalid_isins) > 3:
+            invalid_list = f"{invalid_list}, ..."
+        return {"isins": f"Enter valid ISINs. Invalid values: {invalid_list}."}, ()
+
+    return {}, tuple(normalized_isins)
+
+
+def _normalize_update_data_isin_input(raw_isins: str) -> list[str]:
+    seen: set[str] = set()
+    normalized_isins: list[str] = []
+    for candidate in _normalize_isin_input(raw_isins):
+        if candidate not in seen:
+            normalized_isins.append(candidate)
+            seen.add(candidate)
+    return normalized_isins
+
+
+def _has_valid_isin_checksum(isin: str) -> bool:
+    if not ISIN_PATTERN.fullmatch(isin):
+        return False
+
+    digits = "".join(str(int(char, 36)) for char in isin)
+    checksum = 0
+    parity = len(digits) % 2
+    for index, digit_text in enumerate(digits):
+        digit = int(digit_text)
+        if index % 2 == parity:
+            digit *= 2
+        checksum += digit // 10 + digit % 10
+    return checksum % 10 == 0

@@ -745,35 +745,114 @@ async def test_update_data_page_renders_authenticated_input_form(
     assert "<title>Update Data - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Update Data</h1>' in response.text
     assert "Prepare future authenticated fund data refresh workflows." in response.text
-    assert '<form class="update-data-form" aria-label="Update Data ISIN entry">' in response.text
+    assert (
+        '<form class="update-data-form" method="post" action="/app/update-data" '
+        'aria-label="Update Data ISIN entry" novalidate>'
+    ) in response.text
     assert '<label for="update-isins">ISIN input area</label>' in response.text
     assert 'id="update-isins"' in response.text
     assert 'name="isins"' in response.text
     assert '<textarea' in response.text
-    assert "disabled" in response.text
+    assert "disabled" not in response.text
     assert "Update ISIN" in response.text
-    assert '<button class="primary-action" type="button" disabled>' in response.text
+    assert '<button class="primary-action" type="submit">' in response.text
     assert "New ISINs will eventually fetch OeKB data" in response.text
     assert "Existing ISINs will eventually check OeKB for newer data" in response.text
-    assert "This version does not run ingestion yet." in response.text
+    assert "This version validates submitted ISINs only. It does not run ingestion yet." in response.text
     assert "Future job status and history" in response.text
     assert "Future refresh status and history will appear here." in response.text
-    assert 'method="post" action="/app/update-data"' not in response.text
     assert '<form class="business-query-form"' not in response.text
     assert '<form class="search-form"' not in response.text
 
 
 @pytest.mark.asyncio
-async def test_update_data_has_no_post_route(web_client: httpx.AsyncClient) -> None:
+async def test_update_data_post_redirects_unauthenticated_users_to_login(
+    web_client: httpx.AsyncClient,
+) -> None:
+    response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y45"})
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+@pytest.mark.asyncio
+async def test_update_data_blank_post_shows_validation_error(
+    web_client: httpx.AsyncClient,
+) -> None:
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
     )
     assert login_response.status_code == 303
 
-    response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y45"})
+    response = await web_client.post("/app/update-data", data={"isins": " \n\t "})
 
-    assert response.status_code == 405
+    assert response.status_code == 200
+    assert '<h1 id="app-title">Update Data</h1>' in response.text
+    assert "Enter at least one ISIN." in response.text
+    assert "Normalized ISIN preview" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_data_malformed_post_preserves_input_and_shows_error(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post("/app/update-data", data={"isins": "not-an-isin"})
+
+    assert response.status_code == 200
+    assert "Enter valid ISINs. Invalid values: NOT-AN-ISIN." in response.text
+    assert "not-an-isin" in response.text
+    assert "Normalized ISIN preview" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_data_post_rejects_invalid_isin_checksum(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y44"})
+
+    assert response.status_code == 200
+    assert "Enter valid ISINs. Invalid values: IE00BMTX1Y44." in response.text
+    assert "Normalized ISIN preview" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_data_valid_post_shows_normalized_deduplicated_preview(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/update-data",
+        data={"isins": "ie00bmtx1y45, LU1681044993; IE00BMTX1Y45\tUS0378331005"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Normalized ISIN preview</h2>" in response.text
+    assert "<li>IE00BMTX1Y45</li>" in response.text
+    assert "<li>LU1681044993</li>" in response.text
+    assert "<li>US0378331005</li>" in response.text
+    assert response.text.index("<li>IE00BMTX1Y45</li>") < response.text.index(
+        "<li>LU1681044993</li>"
+    )
+    assert response.text.count("<li>IE00BMTX1Y45</li>") == 1
+    assert "field-error" not in response.text
 
 
 @pytest.mark.asyncio

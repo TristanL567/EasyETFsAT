@@ -227,7 +227,8 @@ h1 {
 }
 
 .business-query-form [aria-invalid="true"],
-.search-form [aria-invalid="true"] {
+.search-form [aria-invalid="true"],
+.update-data-form [aria-invalid="true"] {
   border-color: #8a1f11;
 }
 
@@ -317,6 +318,14 @@ h1 {
 .result-panel dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+.isin-preview-list {
+  display: grid;
+  gap: 0.375rem;
+  margin: 0;
+  padding-left: 1.25rem;
+  font-weight: 700;
 }
 
 .empty-state {
