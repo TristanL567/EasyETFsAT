@@ -875,11 +875,20 @@ def test_update_data_status_styles_cover_all_job_statuses() -> None:
 @pytest.mark.asyncio
 async def test_update_data_post_redirects_unauthenticated_users_to_login(
     web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    background_calls: list[int] = []
+
+    async def fake_run_queued_update_jobs(*, limit: int = 10) -> None:
+        background_calls.append(limit)
+
+    monkeypatch.setattr(web_routes, "run_queued_update_jobs", fake_run_queued_update_jobs)
+
     response = await web_client.post("/app/update-data", data={"isins": "IE00BMTX1Y45"})
 
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
+    assert background_calls == []
 
 
 @pytest.mark.asyncio
@@ -941,8 +950,16 @@ async def test_update_data_post_rejects_invalid_isin_checksum(
 @pytest.mark.asyncio
 async def test_update_data_invalid_post_creates_no_jobs(
     update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     web_client, session_factory = update_data_job_client
+    background_calls: list[int] = []
+
+    async def fake_run_queued_update_jobs(*, limit: int = 10) -> None:
+        background_calls.append(limit)
+
+    monkeypatch.setattr(web_routes, "run_queued_update_jobs", fake_run_queued_update_jobs)
+
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -959,13 +976,22 @@ async def test_update_data_invalid_post_creates_no_jobs(
         job_count = len((await session.scalars(select(INGJOB))).all())
 
     assert job_count == 0
+    assert background_calls == []
 
 
 @pytest.mark.asyncio
 async def test_update_data_valid_post_creates_queued_jobs_and_shows_status(
     update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     web_client, session_factory = update_data_job_client
+    background_calls: list[int] = []
+
+    async def fake_run_queued_update_jobs(*, limit: int = 10) -> None:
+        background_calls.append(limit)
+
+    monkeypatch.setattr(web_routes, "run_queued_update_jobs", fake_run_queued_update_jobs)
+
     login_response = await web_client.post(
         "/login",
         data={"username": "admin", "password": "password"},
@@ -1005,13 +1031,22 @@ async def test_update_data_valid_post_creates_queued_jobs_and_shows_status(
         "Queued for update.",
         "Queued for update.",
     ]
+    assert background_calls == [10]
 
 
 @pytest.mark.asyncio
 async def test_update_data_valid_post_skips_duplicate_active_jobs(
     update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     web_client, session_factory = update_data_job_client
+    background_calls: list[int] = []
+
+    async def fake_run_queued_update_jobs(*, limit: int = 10) -> None:
+        background_calls.append(limit)
+
+    monkeypatch.setattr(web_routes, "run_queued_update_jobs", fake_run_queued_update_jobs)
+
     async with session_factory() as session:
         session.add(
             INGJOB(
@@ -1048,6 +1083,65 @@ async def test_update_data_valid_post_skips_duplicate_active_jobs(
     assert [job.isin for job in jobs] == ["LU1681044993", "IE00BMTX1Y45", "US0378331005"]
     assert [job.status for job in jobs] == ["running", "queued", "queued"]
     assert [job.requested_user for job in jobs] == ["prior-user", "admin", "admin"]
+    assert background_calls == [10]
+
+
+@pytest.mark.asyncio
+async def test_update_data_duplicate_only_valid_post_does_not_schedule_background_trigger(
+    update_data_job_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = update_data_job_client
+    background_calls: list[int] = []
+
+    async def fake_run_queued_update_jobs(*, limit: int = 10) -> None:
+        background_calls.append(limit)
+
+    monkeypatch.setattr(web_routes, "run_queued_update_jobs", fake_run_queued_update_jobs)
+
+    async with session_factory() as session:
+        session.add_all(
+            [
+                INGJOB(
+                    isin="IE00BMTX1Y45",
+                    requested_user="prior-user",
+                    status="queued",
+                    message="Already queued.",
+                ),
+                INGJOB(
+                    isin="LU1681044993",
+                    requested_user="prior-user",
+                    status="running",
+                    message="Already running.",
+                ),
+            ]
+        )
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/update-data",
+        data={"isins": "IE00BMTX1Y45 LU1681044993"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Update job status</h2>" in response.text
+    assert '<span class="status-pill status-skipped">skipped</span>' in response.text
+    assert "Skipped: active update job already exists." in response.text
+
+    async with session_factory() as session:
+        jobs = (
+            await session.scalars(select(INGJOB).order_by(INGJOB.id))
+        ).all()
+
+    assert [job.isin for job in jobs] == ["IE00BMTX1Y45", "LU1681044993"]
+    assert [job.status for job in jobs] == ["queued", "running"]
+    assert background_calls == []
 
 
 @pytest.mark.asyncio

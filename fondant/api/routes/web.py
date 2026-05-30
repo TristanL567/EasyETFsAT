@@ -3,6 +3,7 @@ import csv
 import hashlib
 import hmac
 import json
+import logging
 import re
 import time
 from decimal import Decimal, InvalidOperation
@@ -10,12 +11,13 @@ from io import StringIO
 from pathlib import Path
 from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fondant import update_data
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, execute_business_query
 from fondant.config import Settings, get_settings
 from fondant.db.models import INGJOB
@@ -27,10 +29,12 @@ TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 
 templates = Jinja2Templates(directory=TEMPLATE_DIR)
 router = APIRouter(include_in_schema=False)
+logger = logging.getLogger(__name__)
 
 LEGAL_ENTITY_TYPES = ("natural person", "business", "Stiftung")
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 RECENT_UPDATE_DATA_JOB_LIMIT = 20
+BACKGROUND_UPDATE_DATA_JOB_LIMIT = 10
 BUSINESS_QUERY_CSV_HEADERS = (
     "query_name",
     "isin",
@@ -469,6 +473,7 @@ async def app_update_data(
 @router.post("/app/update-data", response_class=HTMLResponse)
 async def submit_update_data(
     request: Request,
+    background_tasks: BackgroundTasks,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> HTMLResponse:
     username = _authenticated_username(request)
@@ -481,6 +486,11 @@ async def submit_update_data(
     job_results: tuple[dict[str, str], ...] = ()
     if not errors:
         job_results = await _queue_update_data_jobs(session, normalized_isins, username)
+        if any(result["status"] == "queued" for result in job_results):
+            background_tasks.add_task(
+                _run_queued_update_jobs_background,
+                limit=BACKGROUND_UPDATE_DATA_JOB_LIMIT,
+            )
     recent_jobs = await _recent_update_data_jobs(session)
 
     return _render_app_shell(
@@ -559,6 +569,17 @@ async def _queue_update_data_jobs(
         await session.commit()
 
     return tuple(results)
+
+
+async def _run_queued_update_jobs_background(limit: int) -> None:
+    try:
+        await run_queued_update_jobs(limit=limit)
+    except Exception:
+        logger.exception("Background update-data job execution failed.")
+
+
+async def run_queued_update_jobs(limit: int = BACKGROUND_UPDATE_DATA_JOB_LIMIT) -> object:
+    return await update_data.run_queued_update_jobs(limit=limit)
 
 
 @router.get("/app/documentation", response_class=HTMLResponse)
