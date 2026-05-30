@@ -13,6 +13,7 @@ from fondant.business_query import (
     BusinessQueryValidationError,
     execute_business_query,
 )
+from fondant.db.models.business_query import ALL_AVAILABLE_YEARS
 
 
 class _FakeMappingResult:
@@ -180,6 +181,169 @@ async def test_business_query_maps_stiftung_suffix_and_preserves_null_amounts() 
     assert result.rows[0].fx_rate == Decimal("0E-10")
     assert result.rows[0].base_eur_value is None
     assert result.rows[0].calculated_eur_value is None
+
+
+@pytest.mark.parametrize(
+    ("legal_entity_type", "subcategory_key", "expected_categories"),
+    [
+        ("natural person", "natural_person_pa_with_option", ("PVM",)),
+        ("natural person", "natural_person_pa_without_option", ("PVO",)),
+        ("natural person", "natural_person_all", ("PVM", "PVO")),
+        ("business", "business_bv_with_option", ("BVM",)),
+        ("business", "business_bv_without_option", ("BVO",)),
+        ("business", "business_bv_legal_person", ("BVJ",)),
+        ("business", "business_all", ("BVM", "BVO", "BVJ")),
+        ("Stiftung", "stiftung", ("STI",)),
+    ],
+)
+@pytest.mark.asyncio
+async def test_business_query_maps_subcategory_suffixes(
+    legal_entity_type: str,
+    subcategory_key: str,
+    expected_categories: tuple[str, ...],
+) -> None:
+    session = _FakeSession([_view_row()])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Subcategory case",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type=legal_entity_type,
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            subcategory_key=subcategory_key,
+        ),
+    )
+
+    assert tuple(row.legal_entity_category for row in result.rows) == expected_categories
+    assert result.query.subcategory_key == subcategory_key
+
+
+@pytest.mark.parametrize(
+    ("legal_entity_type", "subcategory_key"),
+    [
+        ("natural person", "business_bv_with_option"),
+        ("business", "natural_person_pa_with_option"),
+        ("Stiftung", "natural_person_all"),
+        ("Stiftung", "business_all"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_business_query_rejects_incompatible_subcategory_combinations(
+    legal_entity_type: str,
+    subcategory_key: str,
+) -> None:
+    session = _FakeSession([])
+
+    with pytest.raises(BusinessQueryValidationError, match="subcategory"):
+        await execute_business_query(
+            session,
+            BusinessQueryInput(
+                query_name="Bad subcategory",
+                isins=("IE00BMTX1Y45",),
+                legal_entity_type=legal_entity_type,
+                amount_multiplier=Decimal("1"),
+                subcategory_key=subcategory_key,
+            ),
+        )
+
+    assert session.statement is None
+
+
+@pytest.mark.asyncio
+async def test_business_query_all_available_years_preserves_unfiltered_year_behavior() -> None:
+    session = _FakeSession(
+        [
+            _view_row(TAXYEA=2024, TAXOKBIDN=1000),
+            _view_row(TAXYEA=2025, TAXOKBIDN=1001),
+        ]
+    )
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="All years",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            tax_year_filter=ALL_AVAILABLE_YEARS,
+        ),
+    )
+
+    assert session.statement is not None
+    compiled_sql = _compiled_sql(session.statement)
+    assert '"TAXYEA" =' not in compiled_sql
+    assert '"TAXYEA" BETWEEN' not in compiled_sql
+    assert result.query.tax_year_filter == ALL_AVAILABLE_YEARS
+    assert {row.tax_year for row in result.rows} == {2024, 2025}
+
+
+@pytest.mark.asyncio
+async def test_business_query_specific_tax_year_filter_adds_year_predicate() -> None:
+    session = _FakeSession([_view_row(TAXYEA=2024)])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Specific year",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            tax_year_filter="2024",
+        ),
+    )
+
+    assert session.statement is not None
+    compiled_sql = _compiled_sql(session.statement)
+    assert '"TAXYEA" = 2024' in compiled_sql
+    assert result.query.tax_year_filter == "2024"
+    assert result.query.year == 2024
+
+
+@pytest.mark.parametrize("tax_year_filter", ["all", "202X", "1899", "3001"])
+@pytest.mark.asyncio
+async def test_business_query_rejects_invalid_tax_year_filter(tax_year_filter: str) -> None:
+    session = _FakeSession([])
+
+    with pytest.raises(BusinessQueryValidationError, match="tax_year_filter|year must be between"):
+        await execute_business_query(
+            session,
+            BusinessQueryInput(
+                query_name="Bad year",
+                isins=("IE00BMTX1Y45",),
+                legal_entity_type="business",
+                amount_multiplier=Decimal("1"),
+                tax_year_filter=tax_year_filter,
+            ),
+        )
+
+    assert session.statement is None
+
+
+@pytest.mark.asyncio
+async def test_business_query_multiplies_amount_with_subcategory_and_tax_year_filters() -> None:
+    session = _FakeSession([_view_row(TAXYEA=2025)])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Filtered amount",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="business",
+            amount_multiplier=Decimal("2.5"),
+            tax_fields=("K40",),
+            subcategory_key="business_bv_without_option",
+            tax_year_filter=2025,
+        ),
+    )
+
+    assert result.count == 1
+    assert result.rows[0].legal_entity_category == "BVO"
+    assert result.rows[0].base_eur_value == Decimal("40.0000000000")
+    assert result.rows[0].calculated_eur_value == Decimal("100.00000000000")
 
 
 @pytest.mark.asyncio

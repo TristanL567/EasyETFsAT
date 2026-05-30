@@ -11,12 +11,46 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+ALL_AVAILABLE_YEARS = "all_available_years"
 
 LEGAL_ENTITY_SUFFIXES = MappingProxyType(
     {
         "natural person": ("PVM", "PVO"),
         "business": ("BVM", "BVO", "BVJ"),
         "Stiftung": ("STI",),
+    }
+)
+
+LEGAL_ENTITY_SUBCATEGORY_SUFFIXES = MappingProxyType(
+    {
+        "natural person": MappingProxyType(
+            {
+                "natural_person_pa_with_option": ("PVM",),
+                "natural_person_pa_without_option": ("PVO",),
+                "natural_person_all": ("PVM", "PVO"),
+            }
+        ),
+        "business": MappingProxyType(
+            {
+                "business_bv_with_option": ("BVM",),
+                "business_bv_without_option": ("BVO",),
+                "business_bv_legal_person": ("BVJ",),
+                "business_all": ("BVM", "BVO", "BVJ"),
+            }
+        ),
+        "Stiftung": MappingProxyType(
+            {
+                "stiftung": ("STI",),
+            }
+        ),
+    }
+)
+
+DEFAULT_SUBCATEGORY_KEYS = MappingProxyType(
+    {
+        "natural person": "natural_person_all",
+        "business": "business_all",
+        "Stiftung": "stiftung",
     }
 )
 
@@ -65,6 +99,8 @@ class BusinessQueryInput:
     year: int | None = None
     year_from: int | None = None
     year_to: int | None = None
+    subcategory_key: str | None = None
+    tax_year_filter: str | int | None = None
 
 
 @dataclass(frozen=True)
@@ -109,19 +145,27 @@ def validate_business_query_input(query: BusinessQueryInput) -> BusinessQueryInp
 
     if query.legal_entity_type not in LEGAL_ENTITY_SUFFIXES:
         raise BusinessQueryValidationError("unsupported legal entity type")
+    subcategory_key = _normalize_subcategory_key(query.legal_entity_type, query.subcategory_key)
 
     amount_multiplier = _normalize_decimal(query.amount_multiplier, "amount_multiplier")
     if amount_multiplier <= 0:
         raise BusinessQueryValidationError("amount_multiplier must be positive")
 
     tax_fields = _normalize_tax_fields(query.tax_fields)
-    year, year_from, year_to = _normalize_year_filters(query.year, query.year_from, query.year_to)
+    tax_year_filter, year, year_from, year_to = _normalize_tax_year_selection(
+        query.tax_year_filter,
+        query.year,
+        query.year_from,
+        query.year_to,
+    )
 
     return BusinessQueryInput(
         query_name=query_name,
         isins=isins,
         legal_entity_type=query.legal_entity_type,
         amount_multiplier=amount_multiplier,
+        subcategory_key=subcategory_key,
+        tax_year_filter=tax_year_filter,
         tax_fields=tax_fields,
         year=year,
         year_from=year_from,
@@ -134,7 +178,7 @@ async def execute_business_query(
     query: BusinessQueryInput,
 ) -> BusinessQueryResult:
     validated = validate_business_query_input(query)
-    suffixes = LEGAL_ENTITY_SUFFIXES[validated.legal_entity_type]
+    suffixes = _suffixes_for_validated_query(validated)
     selected_amount_columns = _selected_amount_column_names(validated.tax_fields, suffixes)
 
     statement = _build_business_query_statement(validated, selected_amount_columns)
@@ -219,6 +263,59 @@ def _normalize_tax_fields(raw_tax_fields: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(normalized_fields)
 
 
+def _normalize_subcategory_key(legal_entity_type: str, raw_subcategory_key: str | None) -> str:
+    if raw_subcategory_key is None:
+        return DEFAULT_SUBCATEGORY_KEYS[legal_entity_type]
+
+    subcategory_key = raw_subcategory_key.strip()
+    allowed_subcategories = LEGAL_ENTITY_SUBCATEGORY_SUFFIXES[legal_entity_type]
+    if subcategory_key not in allowed_subcategories:
+        raise BusinessQueryValidationError("subcategory is not supported for legal entity type")
+    return subcategory_key
+
+
+def _normalize_tax_year_selection(
+    tax_year_filter: str | int | None,
+    year: int | None,
+    year_from: int | None,
+    year_to: int | None,
+) -> tuple[str | None, int | None, int | None, int | None]:
+    has_legacy_year_filter = year is not None or year_from is not None or year_to is not None
+    if tax_year_filter is not None and has_legacy_year_filter:
+        raise BusinessQueryValidationError("use either tax_year_filter or legacy year filters")
+    if tax_year_filter is not None:
+        normalized_filter, normalized_year = _normalize_tax_year_filter(tax_year_filter)
+        return normalized_filter, normalized_year, None, None
+
+    normalized_year, normalized_year_from, normalized_year_to = _normalize_year_filters(year, year_from, year_to)
+    if normalized_year is not None:
+        return str(normalized_year), normalized_year, None, None
+    if normalized_year_from is None and normalized_year_to is None:
+        return ALL_AVAILABLE_YEARS, None, None, None
+    return None, None, normalized_year_from, normalized_year_to
+
+
+def _normalize_tax_year_filter(tax_year_filter: str | int) -> tuple[str, int | None]:
+    if isinstance(tax_year_filter, int):
+        year = _validate_year(tax_year_filter)
+        return str(year), year
+
+    if not isinstance(tax_year_filter, str):
+        raise BusinessQueryValidationError(
+            f"tax_year_filter must be {ALL_AVAILABLE_YEARS} or a year between 1900 and 3000"
+        )
+
+    normalized_filter = tax_year_filter.strip()
+    if normalized_filter == ALL_AVAILABLE_YEARS:
+        return ALL_AVAILABLE_YEARS, None
+    if normalized_filter.isdecimal():
+        year = _validate_year(int(normalized_filter))
+        return str(year), year
+    raise BusinessQueryValidationError(
+        f"tax_year_filter must be {ALL_AVAILABLE_YEARS} or a year between 1900 and 3000"
+    )
+
+
 def _normalize_year_filters(
     year: int | None,
     year_from: int | None,
@@ -243,9 +340,17 @@ def _normalize_year_filters(
 
 
 def _validate_year(year: int) -> int:
+    if not isinstance(year, int):
+        raise BusinessQueryValidationError("year must be numeric")
     if year < 1900 or year > 3000:
         raise BusinessQueryValidationError("year must be between 1900 and 3000")
     return year
+
+
+def _suffixes_for_validated_query(query: BusinessQueryInput) -> tuple[str, ...]:
+    if query.subcategory_key is None:
+        raise BusinessQueryValidationError("subcategory is required")
+    return LEGAL_ENTITY_SUBCATEGORY_SUFFIXES[query.legal_entity_type][query.subcategory_key]
 
 
 def _selected_amount_column_names(
