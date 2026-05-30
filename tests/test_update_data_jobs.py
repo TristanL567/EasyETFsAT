@@ -306,6 +306,89 @@ async def test_run_update_jobs_honors_limit_and_handles_empty_queue(
 
 
 @pytest.mark.asyncio
+async def test_run_queued_update_jobs_opens_session_and_delegates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    calls: list[tuple[AsyncSession, int]] = []
+
+    expected_summary = update_data.UpdateJobRunSummary(
+        processed=2,
+        successes=1,
+        failures=1,
+        skipped=0,
+    )
+
+    async def fake_run_update_jobs(
+        session: AsyncSession,
+        limit: int = 1,
+    ) -> update_data.UpdateJobRunSummary:
+        calls.append((session, limit))
+        assert isinstance(session, AsyncSession)
+        return expected_summary
+
+    monkeypatch.setattr(update_data, "AsyncSessionFactory", session_factory)
+    monkeypatch.setattr(update_data, "run_update_jobs", fake_run_update_jobs)
+
+    try:
+        summary = await update_data.run_queued_update_jobs()
+
+        assert summary == expected_summary
+        assert len(calls) == 1
+        assert calls[0][1] == 10
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_queued_update_jobs_passes_through_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    seen_limits: list[int] = []
+
+    async def fake_run_update_jobs(
+        session: AsyncSession,
+        limit: int = 1,
+    ) -> update_data.UpdateJobRunSummary:
+        seen_limits.append(limit)
+        return update_data.UpdateJobRunSummary(
+            processed=0,
+            successes=0,
+            failures=0,
+            skipped=1,
+        )
+
+    monkeypatch.setattr(update_data, "AsyncSessionFactory", session_factory)
+    monkeypatch.setattr(update_data, "run_update_jobs", fake_run_update_jobs)
+
+    try:
+        await update_data.run_queued_update_jobs(limit=7)
+
+        assert seen_limits == [7]
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_run_update_data_jobs_cli_uses_configured_session_and_prints_summary(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

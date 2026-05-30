@@ -86,7 +86,11 @@ async def test_update_data_route_does_not_call_update_service_yet(
     async def fail_if_called(isin: str) -> update_data.UpdateDataResult:
         raise AssertionError(f"update service should not be called for {isin}")
 
+    async def fail_if_helper_called(limit: int = 10) -> update_data.UpdateJobRunSummary:
+        raise AssertionError(f"background helper should not be called with limit {limit}")
+
     monkeypatch.setattr(update_data, "update_single_isin", fail_if_called)
+    monkeypatch.setattr(update_data, "run_queued_update_jobs", fail_if_helper_called)
     engine: AsyncEngine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         connect_args={"check_same_thread": False},

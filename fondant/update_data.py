@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fondant.db.models import INGJOB
+from fondant.db.session import AsyncSessionFactory
 from fondant.ingestion.pipeline import ingest_isin
 
 
@@ -128,3 +129,9 @@ async def run_update_jobs(session: AsyncSession, limit: int = 1) -> UpdateJobRun
         failures=failures,
         skipped=0 if processed else 1,
     )
+
+
+async def run_queued_update_jobs(limit: int = 10) -> UpdateJobRunSummary:
+    """Open an app database session and process queued update-data jobs."""
+    async with AsyncSessionFactory() as session:
+        return await run_update_jobs(session, limit=limit)
