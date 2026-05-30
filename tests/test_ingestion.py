@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -172,6 +172,7 @@ async def test_ingest_isin_is_idempotent_and_logs_runs(
         implog_count = await session.scalar(select(func.count()).select_from(IMPLOG))
         sec_row = await session.scalar(select(SECMDA).where(SECMDA.isin == isin))
         sourcerpt_row = await session.scalar(select(SOURCERPT).where(SOURCERPT.isin == isin, SOURCERPT.stm_id == 1001))
+        taxlin_rows = (await session.execute(select(TAXLIN).order_by(TAXLIN.line_code))).scalars().all()
 
     assert secmda_count == 1
     assert sec_row is not None
@@ -191,6 +192,38 @@ async def test_ingest_isin_is_idempotent_and_logs_runs(
     assert sourcerpt_row.gj_beginn.isoformat() == "2024-04-01"
     assert sourcerpt_row.gj_ende.isoformat() == "2025-03-31"
     assert sourcerpt_row.jahresmeldung is True
+    assert len(taxlin_rows) == 11
+    assert all(row.description for row in taxlin_rows)
+    assert all(row.usage_note for row in taxlin_rows)
+    assert {
+        row.source_label
+        for row in taxlin_rows
+    } == {
+        "OeKB Feldliste Steuerdaten Fonds (gesamt), Gueltig ab 14.04.2025, Vers. 07.10.2024"
+    }
+
+
+@pytest.mark.asyncio
+async def test_ensure_tax_dictionaries_updates_taxlin_metadata(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_session_factory() as session:
+        await pipeline._ensure_tax_dictionaries(session=session)
+        await session.execute(
+            update(TAXLIN)
+            .where(TAXLIN.line_code == "K11")
+            .values(description="stale", usage_note="stale", source_label="stale")
+        )
+        await session.commit()
+
+        await pipeline._ensure_tax_dictionaries(session=session)
+        row = await session.scalar(select(TAXLIN).where(TAXLIN.line_code == "K11"))
+
+    expected = next(line for line in pipeline.LINE_DICTIONARY if line["line_code"] == "K11")
+    assert row is not None
+    assert row.description == expected["description"]
+    assert row.usage_note == expected["usage_note"]
+    assert row.source_label == expected["source_label"]
 
 
 @pytest.mark.asyncio

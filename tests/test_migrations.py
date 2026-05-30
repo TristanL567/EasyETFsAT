@@ -77,6 +77,8 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
 
     taxdat_columns = {column["name"] for column in inspector.get_columns("TAXDAT")}
     assert {"TAXRPTIDN", "TAXOKBIDN", "TAXLINIDN", "TAXCATIDN", "TAXAMT"}.issubset(taxdat_columns)
+    taxlin_columns = {column["name"] for column in inspector.get_columns("TAXLIN")}
+    assert {"TAXDSC", "TAXUSE", "TAXSRC"}.issubset(taxlin_columns)
     sourceage_columns = {column["name"] for column in inspector.get_columns("SOURCEAGE")}
     assert {"SRCK40PVM", "SRCK40STF", "SRCK62PVM", "SRCK62STF"}.issubset(sourceage_columns)
     refexc_columns = {column["name"] for column in inspector.get_columns("REFEXC")}
@@ -101,7 +103,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
 
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260419_0011"
+    assert revision == "20260419_0012"
     engine.dispose()
 
 

@@ -19,6 +19,7 @@ from fondant.business_query import BusinessQueryInput, BusinessQueryResult, exec
 from fondant.config import Settings, get_settings
 from fondant.db.session import get_session
 from fondant.search import FundSearchResult, has_available_fund_data, search_available_funds
+from fondant.tax_registry import TAX_LINES
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 
@@ -333,6 +334,7 @@ def _render_app_shell(
             "search_results": search_results,
             "search_submitted": search_submitted,
             "search_database_has_records": search_database_has_records,
+            "tax_lines": TAX_LINES,
         },
     )
 

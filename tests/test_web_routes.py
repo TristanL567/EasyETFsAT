@@ -10,6 +10,7 @@ from fondant.api.main import create_app
 from fondant.api.routes import web as web_routes
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, BusinessQueryResultRow
 from fondant.search import FundSearchResult
+from fondant.tax_registry import TAX_LINES
 
 
 @pytest.fixture
@@ -733,6 +734,16 @@ async def test_documentation_page_renders_authenticated_help_content(
     assert "K40" in response.text
     assert "K61" in response.text
     assert "K62" in response.text
+    assert "<th scope=\"col\">Field</th>" in response.text
+    assert "<th scope=\"col\">German label</th>" in response.text
+    assert "<th scope=\"col\">Description</th>" in response.text
+    assert "<th scope=\"col\">Usage</th>" in response.text
+    assert "Descriptions are based on OeKB tax field documentation." in response.text
+    for tax_line in TAX_LINES:
+        assert f"<td>{tax_line.line_code}</td>" in response.text
+        assert f"<td>{tax_line.name_de}</td>" in response.text
+        assert f"<td>{tax_line.description}</td>" in response.text
+        assert f"<td>{tax_line.usage_note}</td>" in response.text
     assert "PVM" in response.text
     assert "BVO" in response.text
     assert "STI" in response.text

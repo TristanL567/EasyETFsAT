@@ -217,6 +217,30 @@
               <p>The base value is the EUR value from the tax data before applying your entered amount. The calculated value is the base value multiplied by the amount multiplier.</p>
               <p>CSV exports include the query name, ISIN, tax year, tax field, legal entity category, base EUR value, amount multiplier, and calculated EUR value.</p>
               <p>Search helps find available fund tax data by ISIN or fund/security name, then sends a selected ISIN into BusinessQuery.</p>
+              <h2>Tax field reference</h2>
+              <p>Descriptions are based on OeKB tax field documentation.</p>
+              <div class="result-table-wrap">
+                <table class="result-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Field</th>
+                      <th scope="col">German label</th>
+                      <th scope="col">Description</th>
+                      <th scope="col">Usage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for tax_line in tax_lines %}
+                    <tr>
+                      <td>{{ tax_line.line_code }}</td>
+                      <td>{{ tax_line.name_de }}</td>
+                      <td>{{ tax_line.description }}</td>
+                      <td>{{ tax_line.usage_note }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
             </div>
             {% endif %}
           </section>

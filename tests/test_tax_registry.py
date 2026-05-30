@@ -50,6 +50,9 @@ def test_parser_and_seed_dictionaries_are_derived_from_registry() -> None:
             "name_de": line.name_de,
             "name_en": line.name_en,
             "line_order": line.line_order,
+            "description": line.description,
+            "usage_note": line.usage_note,
+            "source_label": line.source_label,
         }
         for line in TAX_LINES
     )
@@ -63,6 +66,18 @@ def test_parser_and_seed_dictionaries_are_derived_from_registry() -> None:
         }
         for category in TAX_CATEGORIES
     )
+
+
+def test_line_dictionary_includes_taxlin_description_metadata_for_all_rows() -> None:
+    assert len(pipeline.LINE_DICTIONARY) == 11
+    assert all(line["description"] for line in pipeline.LINE_DICTIONARY)
+    assert all(line["usage_note"] for line in pipeline.LINE_DICTIONARY)
+    assert {
+        line["source_label"]
+        for line in pipeline.LINE_DICTIONARY
+    } == {
+        "OeKB Feldliste Steuerdaten Fonds (gesamt), Gueltig ab 14.04.2025, Vers. 07.10.2024"
+    }
 
 
 def test_parser_output_model_matches_registry_api_aliases() -> None:
