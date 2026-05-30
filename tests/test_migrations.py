@@ -57,6 +57,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
         "REFEXC",
         "IMPLOG",
         "IMPERR",
+        "INGJOB",
     }
     existing_tables = set(inspector.get_table_names())
     assert expected_tables.issubset(existing_tables)
@@ -79,6 +80,23 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert {"TAXRPTIDN", "TAXOKBIDN", "TAXLINIDN", "TAXCATIDN", "TAXAMT"}.issubset(taxdat_columns)
     taxlin_columns = {column["name"] for column in inspector.get_columns("TAXLIN")}
     assert {"TAXDSC", "TAXUSE", "TAXSRC"}.issubset(taxlin_columns)
+    ingjob_columns = {column["name"]: column for column in inspector.get_columns("INGJOB")}
+    assert {
+        "JOBIDN",
+        "JOBCRTDTS",
+        "JOBUPDDTS",
+        "JOBISN",
+        "JOBREQUSR",
+        "JOBSTS",
+        "JOBMSG",
+        "JOBERR",
+        "JOBSTADTS",
+        "JOBFINDTS",
+    }.issubset(ingjob_columns)
+    assert ingjob_columns["JOBISN"]["nullable"] is False
+    assert ingjob_columns["JOBSTS"]["nullable"] is False
+    ingjob_indexes = {index["name"]: index for index in inspector.get_indexes("INGJOB")}
+    assert ingjob_indexes["ix_ingjob_isin_status"]["column_names"] == ["JOBISN", "JOBSTS"]
     sourceage_columns = {column["name"] for column in inspector.get_columns("SOURCEAGE")}
     assert {"SRCK40PVM", "SRCK40STF", "SRCK62PVM", "SRCK62STF"}.issubset(sourceage_columns)
     refexc_columns = {column["name"] for column in inspector.get_columns("REFEXC")}
@@ -103,7 +121,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
 
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260419_0012"
+    assert revision == "20260530_0013"
     engine.dispose()
 
 

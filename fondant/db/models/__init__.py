@@ -1,4 +1,5 @@
-﻿from fondant.db.models.imp import IMPERR, IMPLOG
+from fondant.db.models.imp import IMPERR, IMPLOG
+from fondant.db.models.job import ACTIVE_UPDATE_DATA_JOB_STATUSES, INGJOB, UPDATE_DATA_JOB_STATUSES
 from fondant.db.models.ref import REFCCY, REFCTR, REFEXC
 from fondant.db.models.sec import SECDIV, SECMDA
 from fondant.db.models.tax import (
@@ -16,6 +17,8 @@ from fondant.db.models.tax import (
 __all__ = [
     "IMPERR",
     "IMPLOG",
+    "ACTIVE_UPDATE_DATA_JOB_STATUSES",
+    "INGJOB",
     "REFCCY",
     "REFCTR",
     "REFEXC",
@@ -30,4 +33,5 @@ __all__ = [
     "TAXDAT",
     "TAXLIN",
     "TAXRPT",
+    "UPDATE_DATA_JOB_STATUSES",
 ]
