@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.ext.asyncio import (
@@ -11,9 +13,11 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from fondant import update_data
 from fondant.api.routes.web import _queue_update_data_jobs
 from fondant.db.base import Base
 from fondant.db.models import ACTIVE_UPDATE_DATA_JOB_STATUSES, INGJOB, UPDATE_DATA_JOB_STATUSES
+from fondant.jobs import run_update_data_jobs
 
 
 def test_ingjob_model_shape_imports_cleanly() -> None:
@@ -128,6 +132,222 @@ async def test_queue_update_data_jobs_creates_queued_rows_and_skips_active_dupli
         assert [job.isin for job in jobs] == ["LU1681044993", "IE00BMTX1Y45", "US0378331005"]
         assert [job.status for job in jobs] == ["queued", "queued", "queued"]
         assert [job.requested_user for job in jobs] == ["prior-user", "admin", "admin"]
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_next_update_job_processes_oldest_queued_job_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    calls: list[str] = []
+
+    async def fake_update_single_isin(isin: str) -> update_data.UpdateDataResult:
+        calls.append(isin)
+        async with session_factory() as check_session:
+            running_job = await check_session.scalar(select(INGJOB).where(INGJOB.isin == isin))
+        assert running_job is not None
+        assert running_job.status == "running"
+        assert running_job.started_at is not None
+        assert running_job.finished_at is None
+        return update_data.UpdateDataResult(
+            isin=isin,
+            status="success",
+            records_seen=2,
+            records_written=1,
+            message=f"Updated {isin}.",
+        )
+
+    monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+
+    try:
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    INGJOB(isin="IE00BMTX1Y45", status="queued", message="first"),
+                    INGJOB(isin="LU0380865021", status="queued", message="second"),
+                ]
+            )
+            await session.commit()
+
+            processed = await update_data.run_next_update_job(session)
+
+        assert processed is not None
+        assert processed.isin == "IE00BMTX1Y45"
+        assert processed.status == "success"
+        assert processed.message == "Updated IE00BMTX1Y45."
+        assert processed.error_detail is None
+        assert processed.started_at is not None
+        assert processed.finished_at is not None
+        assert calls == ["IE00BMTX1Y45"]
+
+        async with session_factory() as session:
+            jobs = (await session.scalars(select(INGJOB).order_by(INGJOB.id))).all()
+
+        assert [job.status for job in jobs] == ["success", "queued"]
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_next_update_job_records_failed_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def fake_update_single_isin(isin: str) -> update_data.UpdateDataResult:
+        return update_data.UpdateDataResult(
+            isin=isin,
+            status="failed",
+            records_seen=0,
+            records_written=0,
+            message="OeKB rejected the request.",
+            error="remote service error",
+        )
+
+    monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+
+    try:
+        async with session_factory() as session:
+            session.add(INGJOB(isin="IE00BMTX1Y45", status="queued", message="queued"))
+            await session.commit()
+
+            processed = await update_data.run_next_update_job(session)
+
+        assert processed is not None
+        assert processed.status == "failed"
+        assert processed.message == "OeKB rejected the request."
+        assert processed.error_detail == "remote service error"
+        assert processed.started_at is not None
+        assert processed.finished_at is not None
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_update_jobs_honors_limit_and_handles_empty_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def fake_update_single_isin(isin: str) -> update_data.UpdateDataResult:
+        return update_data.UpdateDataResult(
+            isin=isin,
+            status="success",
+            records_seen=1,
+            records_written=1,
+            message=f"Updated {isin}.",
+        )
+
+    monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+
+    try:
+        async with session_factory() as session:
+            session.add_all(
+                [
+                    INGJOB(isin="IE00BMTX1Y45", status="queued", message="first"),
+                    INGJOB(isin="LU0380865021", status="queued", message="second"),
+                ]
+            )
+            await session.commit()
+
+            summary = await update_data.run_update_jobs(session, limit=1)
+            empty_summary = await update_data.run_update_jobs(session, limit=0)
+
+        assert summary == update_data.UpdateJobRunSummary(
+            processed=1,
+            successes=1,
+            failures=0,
+            skipped=0,
+        )
+        assert empty_summary == update_data.UpdateJobRunSummary(
+            processed=0,
+            successes=0,
+            failures=0,
+            skipped=1,
+        )
+
+        async with session_factory() as session:
+            jobs = (await session.scalars(select(INGJOB).order_by(INGJOB.id))).all()
+
+        assert [job.status for job in jobs] == ["success", "queued"]
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_update_data_jobs_cli_uses_configured_session_and_prints_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def fake_update_single_isin(isin: str) -> update_data.UpdateDataResult:
+        return update_data.UpdateDataResult(
+            isin=isin,
+            status="success",
+            records_seen=1,
+            records_written=1,
+            message=f"Updated {isin}.",
+        )
+
+    monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+    monkeypatch.setattr(run_update_data_jobs, "AsyncSessionFactory", session_factory)
+
+    try:
+        async with session_factory() as session:
+            session.add(INGJOB(isin="IE00BMTX1Y45", status="queued", message="queued"))
+            await session.commit()
+
+        exit_code = await run_update_data_jobs.run_job(argparse.Namespace(limit=10))
+
+        assert exit_code == 0
+        assert (
+            "Update-data jobs processed: 1; successes: 1; failures: 0; skipped/no queued: 0."
+            in capsys.readouterr().out
+        )
+
+        empty_exit_code = await run_update_data_jobs.run_job(argparse.Namespace(limit=10))
+
+        assert empty_exit_code == 0
+        assert "No queued update-data jobs found. skipped/no queued: 1." in capsys.readouterr().out
     finally:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
