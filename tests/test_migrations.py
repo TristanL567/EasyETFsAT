@@ -131,6 +131,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     view_names = set(inspector.get_view_names())
     assert "V1_TAXDATPRE" in view_names
     assert "V2_TAXDATEUR" in view_names
+    assert "V2_TAXDATHOMCCY" in view_names
 
     view_cols = {column["name"] for column in inspector.get_columns("V1_TAXDATPRE")}
     registry_view_columns = {
@@ -146,9 +147,25 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     view2_cols = {column["name"] for column in inspector.get_columns("V2_TAXDATEUR")}
     assert {"TAXMDT", "FXRAT", "K61PVM", "K62PVM", "K40PVM"}.issubset(view2_cols)
 
+    homccy_view_cols = {column["name"] for column in inspector.get_columns("V2_TAXDATHOMCCY")}
+    assert {
+        "TAXISN",
+        "TAXOKBIDN",
+        "TAXYEA",
+        "FNDCCY",
+        "TAXMDT",
+        "FXRAT",
+        "K40PVM_HOMCCY",
+        "K61BVM_HOMCCY",
+        "K62STI_HOMCCY",
+        "K40PVM_EUR",
+        "K61BVM_EUR",
+        "K62STI_EUR",
+    }.issubset(homccy_view_cols)
+
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260530_0014"
+    assert revision == "20260530_0015"
     engine.dispose()
 
 
