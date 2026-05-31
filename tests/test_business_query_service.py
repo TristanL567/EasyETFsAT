@@ -50,6 +50,8 @@ def _view_row(**overrides: Any) -> dict[str, Any]:
         "FNDCCY": "EUR",
         "TAXMDT": date(2025, 6, 15),
         "FXRAT": Decimal("1.0000000000"),
+    }
+    base_amounts: dict[str, Decimal | None] = {
         "K40PVM": Decimal("10.0000000000"),
         "K40PVO": Decimal("20.0000000000"),
         "K40BVM": Decimal("30.0000000000"),
@@ -69,7 +71,15 @@ def _view_row(**overrides: Any) -> dict[str, Any]:
         "K62BVJ": Decimal("11.0000000000"),
         "K62STI": Decimal("12.0000000000"),
     }
-    row.update(overrides)
+    for column_name, value in base_amounts.items():
+        row[f"{column_name}_HOMCCY"] = value
+        row[f"{column_name}_EUR"] = value
+    for key, value in overrides.items():
+        if key in base_amounts:
+            row[f"{key}_HOMCCY"] = value
+            row[f"{key}_EUR"] = value
+        else:
+            row[key] = value
     return row
 
 
@@ -83,7 +93,7 @@ def _compiled_sql(statement: Select[tuple[Any, ...]]) -> str:
 
 
 @pytest.mark.asyncio
-async def test_business_query_executes_only_v2_taxdateur_with_parameterized_filters() -> None:
+async def test_business_query_executes_only_v2_taxdathomccy_with_parameterized_filters() -> None:
     session = _FakeSession([_view_row()])
 
     result = await execute_business_query(
@@ -100,9 +110,14 @@ async def test_business_query_executes_only_v2_taxdateur_with_parameterized_filt
 
     assert session.statement is not None
     compiled_sql = _compiled_sql(session.statement)
-    assert 'FROM "V2_TAXDATEUR"' in compiled_sql
+    assert 'FROM "V2_TAXDATHOMCCY"' in compiled_sql
+    assert '"K40PVM_HOMCCY"' in compiled_sql
+    assert '"K40PVM_EUR"' in compiled_sql
+    assert '"K40PVO_HOMCCY"' in compiled_sql
+    assert '"K40PVO_EUR"' in compiled_sql
     assert '"TAXISN" IN (\'IE00BMTX1Y45\')' in compiled_sql
     assert '"TAXYEA" = 2025' in compiled_sql
+    assert '"V2_TAXDATEUR"' not in compiled_sql
     assert '"TAXRPT"' not in compiled_sql
     assert '"TAXDAT"' not in compiled_sql
     assert result.query.query_name == "Monthly review"
@@ -130,6 +145,11 @@ async def test_business_query_maps_natural_person_suffixes_and_multiplies_amount
     ]
     assert result.rows[0].base_eur_value == Decimal("10.0000000000")
     assert result.rows[0].calculated_eur_value == Decimal("15.00000000000")
+    assert result.rows[0].home_currency_code == "EUR"
+    assert result.rows[0].original_currency_code == "EUR"
+    assert result.rows[0].fx_date == date(2025, 6, 15)
+    assert result.rows[0].base_home_currency_value == Decimal("10.0000000000")
+    assert result.rows[0].calculated_home_currency_value == Decimal("15.00000000000")
     assert result.rows[1].base_eur_value == Decimal("20.0000000000")
     assert result.rows[1].calculated_eur_value == Decimal("30.00000000000")
 
@@ -179,8 +199,81 @@ async def test_business_query_maps_stiftung_suffix_and_preserves_null_amounts() 
     assert result.count == 1
     assert result.rows[0].legal_entity_category == "STI"
     assert result.rows[0].fx_rate == Decimal("0E-10")
+    assert result.rows[0].base_home_currency_value is None
+    assert result.rows[0].calculated_home_currency_value is None
     assert result.rows[0].base_eur_value is None
     assert result.rows[0].calculated_eur_value is None
+
+
+@pytest.mark.asyncio
+async def test_business_query_keeps_home_currency_values_when_eur_conversion_is_null() -> None:
+    session = _FakeSession(
+        [
+            _view_row(
+                FNDCCY="USD",
+                FXRAT=None,
+                K40PVM_HOMCCY=Decimal("12.5000000000"),
+                K40PVM_EUR=None,
+            )
+        ]
+    )
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Missing FX",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("3"),
+            tax_fields=("K40",),
+            subcategory_key="natural_person_pa_with_option",
+        ),
+    )
+
+    assert result.count == 1
+    row = result.rows[0]
+    assert row.fund_currency == "USD"
+    assert row.home_currency_code == "USD"
+    assert row.original_currency_code == "USD"
+    assert row.fx_rate is None
+    assert row.base_home_currency_value == Decimal("12.5000000000")
+    assert row.calculated_home_currency_value == Decimal("37.5000000000")
+    assert row.base_eur_value is None
+    assert row.calculated_eur_value is None
+
+
+@pytest.mark.asyncio
+async def test_business_query_returns_distinct_home_and_eur_values_for_non_eur_currency() -> None:
+    session = _FakeSession(
+        [
+            _view_row(
+                FNDCCY="USD",
+                FXRAT=Decimal("1.2500000000"),
+                K40BVO_HOMCCY=Decimal("25.0000000000"),
+                K40BVO_EUR=Decimal("20.0000000000"),
+            )
+        ]
+    )
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Dual currency",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="business",
+            amount_multiplier=Decimal("2"),
+            tax_fields=("K40",),
+            subcategory_key="business_bv_without_option",
+            tax_year_filter=2025,
+        ),
+    )
+
+    assert result.count == 1
+    row = result.rows[0]
+    assert row.base_home_currency_value == Decimal("25.0000000000")
+    assert row.calculated_home_currency_value == Decimal("50.0000000000")
+    assert row.base_eur_value == Decimal("20.0000000000")
+    assert row.calculated_eur_value == Decimal("40.0000000000")
 
 
 @pytest.mark.parametrize(

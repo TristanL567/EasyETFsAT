@@ -65,15 +65,20 @@ TAX_FIELD_LABELS = MappingProxyType(
 DEFAULT_TAX_FIELDS = tuple(TAX_FIELD_LABELS)
 
 IDENTITY_COLUMNS = ("TAXISN", "TAXOKBIDN", "TAXYEA", "FNDCCY", "TAXMDT", "FXRAT")
-AMOUNT_COLUMNS = tuple(
+AMOUNT_COLUMN_BASES = tuple(
     f"{field_code}{suffix}"
     for field_code in TAX_FIELD_LABELS
     for suffixes in LEGAL_ENTITY_SUFFIXES.values()
     for suffix in suffixes
 )
+AMOUNT_COLUMNS = tuple(
+    f"{column_base}_{currency_suffix}"
+    for column_base in AMOUNT_COLUMN_BASES
+    for currency_suffix in ("HOMCCY", "EUR")
+)
 
-V2_TAXDATEUR = sa.Table(
-    "V2_TAXDATEUR",
+V2_TAXDATHOMCCY = sa.Table(
+    "V2_TAXDATHOMCCY",
     sa.MetaData(),
     sa.Column("TAXISN", sa.String(12)),
     sa.Column("TAXOKBIDN", sa.BigInteger()),
@@ -118,6 +123,11 @@ class BusinessQueryResultRow:
     base_eur_value: Decimal | None
     amount_multiplier: Decimal
     calculated_eur_value: Decimal | None
+    original_currency_code: str | None = None
+    home_currency_code: str | None = None
+    fx_date: date | None = None
+    base_home_currency_value: Decimal | None = None
+    calculated_home_currency_value: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -197,29 +207,33 @@ async def execute_business_query(
 
 def _build_business_query_statement(
     query: BusinessQueryInput,
-    amount_column_names: tuple[str, ...],
+    amount_column_bases: tuple[str, ...],
 ) -> sa.Select[tuple[Any, ...]]:
     selected_columns = [
-        V2_TAXDATEUR.c.TAXISN,
-        V2_TAXDATEUR.c.TAXOKBIDN,
-        V2_TAXDATEUR.c.TAXYEA,
-        V2_TAXDATEUR.c.FNDCCY,
-        V2_TAXDATEUR.c.TAXMDT,
-        V2_TAXDATEUR.c.FXRAT,
-        *(V2_TAXDATEUR.c[column_name] for column_name in amount_column_names),
+        V2_TAXDATHOMCCY.c.TAXISN,
+        V2_TAXDATHOMCCY.c.TAXOKBIDN,
+        V2_TAXDATHOMCCY.c.TAXYEA,
+        V2_TAXDATHOMCCY.c.FNDCCY,
+        V2_TAXDATHOMCCY.c.TAXMDT,
+        V2_TAXDATHOMCCY.c.FXRAT,
+        *(
+            V2_TAXDATHOMCCY.c[column_name]
+            for column_base in amount_column_bases
+            for column_name in _amount_currency_column_names(column_base)
+        ),
     ]
 
     statement = (
         sa.select(*selected_columns)
-        .select_from(V2_TAXDATEUR)
-        .where(V2_TAXDATEUR.c.TAXISN.in_(query.isins))
-        .order_by(V2_TAXDATEUR.c.TAXISN, V2_TAXDATEUR.c.TAXYEA, V2_TAXDATEUR.c.TAXOKBIDN)
+        .select_from(V2_TAXDATHOMCCY)
+        .where(V2_TAXDATHOMCCY.c.TAXISN.in_(query.isins))
+        .order_by(V2_TAXDATHOMCCY.c.TAXISN, V2_TAXDATHOMCCY.c.TAXYEA, V2_TAXDATHOMCCY.c.TAXOKBIDN)
     )
 
     if query.year is not None:
-        statement = statement.where(V2_TAXDATEUR.c.TAXYEA == query.year)
+        statement = statement.where(V2_TAXDATHOMCCY.c.TAXYEA == query.year)
     elif query.year_from is not None and query.year_to is not None:
-        statement = statement.where(V2_TAXDATEUR.c.TAXYEA.between(query.year_from, query.year_to))
+        statement = statement.where(V2_TAXDATHOMCCY.c.TAXYEA.between(query.year_from, query.year_to))
 
     return statement
 
@@ -360,6 +374,10 @@ def _selected_amount_column_names(
     return tuple(f"{field_code}{suffix}" for field_code in tax_fields for suffix in suffixes)
 
 
+def _amount_currency_column_names(column_base: str) -> tuple[str, str]:
+    return f"{column_base}_HOMCCY", f"{column_base}_EUR"
+
+
 def _result_row_from_mapping(
     query: BusinessQueryInput,
     source_row: sa.RowMapping,
@@ -367,22 +385,34 @@ def _result_row_from_mapping(
     suffix: str,
     column_name: str,
 ) -> BusinessQueryResultRow:
-    base_value = _decimal_or_none(source_row[column_name])
-    calculated_value = None if base_value is None else base_value * query.amount_multiplier
+    home_column_name, eur_column_name = _amount_currency_column_names(column_name)
+    base_home_currency_value = _decimal_or_none(source_row[home_column_name])
+    base_eur_value = _decimal_or_none(source_row[eur_column_name])
+    calculated_home_currency_value = (
+        None if base_home_currency_value is None else base_home_currency_value * query.amount_multiplier
+    )
+    calculated_eur_value = None if base_eur_value is None else base_eur_value * query.amount_multiplier
+    currency_code = source_row["FNDCCY"]
+    fx_date = source_row["TAXMDT"]
     return BusinessQueryResultRow(
         query_name=query.query_name,
         isin=source_row["TAXISN"],
         tax_year=source_row["TAXYEA"],
         oekb_report_id=source_row["TAXOKBIDN"],
-        fund_currency=source_row["FNDCCY"],
-        report_date=source_row["TAXMDT"],
+        fund_currency=currency_code,
+        report_date=fx_date,
         fx_rate=_decimal_or_none(source_row["FXRAT"]),
         legal_entity_category=suffix,
         tax_field_code=field_code,
         tax_field_label=TAX_FIELD_LABELS[field_code],
-        base_eur_value=base_value,
+        base_eur_value=base_eur_value,
         amount_multiplier=query.amount_multiplier,
-        calculated_eur_value=calculated_value,
+        calculated_eur_value=calculated_eur_value,
+        original_currency_code=currency_code,
+        home_currency_code=currency_code,
+        fx_date=fx_date,
+        base_home_currency_value=base_home_currency_value,
+        calculated_home_currency_value=calculated_home_currency_value,
     )
 
 
