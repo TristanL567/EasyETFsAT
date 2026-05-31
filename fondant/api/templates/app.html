@@ -286,6 +286,141 @@
                 Save query
               </button>
             </form>
+            {% elif section_key == "business-query-edit" %}
+            <form
+              class="business-query-form"
+              method="post"
+              action="/app/business-query/queries/{{ edit_saved_query_id }}/edit"
+              aria-label="Edit saved BusinessQuery rule"
+              novalidate
+            >
+              <p class="form-note">
+                Update the saved rule fields used when this query is loaded.
+              </p>
+
+              <label for="query-name">Custom query name</label>
+              <input
+                id="query-name"
+                name="query_name"
+                type="text"
+                autocomplete="off"
+                placeholder="Monthly Austrian ETF review"
+                value="{{ business_query_form.query_name }}"
+                {% if business_query_errors.query_name %}aria-invalid="true" aria-describedby="query-name-error"{% endif %}
+              >
+              {% if business_query_errors.query_name %}
+              <p class="field-error" id="query-name-error">{{ business_query_errors.query_name }}</p>
+              {% endif %}
+
+              <label for="isins">Default ISIN list</label>
+              <textarea
+                id="isins"
+                name="isins"
+                rows="6"
+                placeholder="Optional default ISINs, one per line"
+                {% if business_query_errors.isins %}aria-invalid="true" aria-describedby="isins-error"{% endif %}
+              >{{ business_query_form.isins }}</textarea>
+              {% if business_query_errors.isins %}
+              <p class="field-error" id="isins-error">{{ business_query_errors.isins }}</p>
+              {% endif %}
+
+              <label for="legal-entity-type">Legal entity type</label>
+              <select id="legal-entity-type" name="legal_entity_type">
+                {% for entity_type in legal_entity_types %}
+                <option value="{{ entity_type }}"{% if business_query_form.legal_entity_type == entity_type %} selected{% endif %}>{{ entity_type }}</option>
+                {% endfor %}
+              </select>
+              {% if business_query_errors.legal_entity_type %}
+              <p class="field-error" id="legal-entity-type-error">{{ business_query_errors.legal_entity_type }}</p>
+              {% endif %}
+
+              {% if business_query_form.legal_entity_type == "Stiftung" %}
+              <label>Subcategory</label>
+              <input type="hidden" name="subcategory_key" value="stiftung">
+              <p class="field-note">Stiftung uses the fixed Stiftung category.</p>
+              {% else %}
+              <label for="subcategory-key">Subcategory</label>
+              <select
+                id="subcategory-key"
+                name="subcategory_key"
+                {% if business_query_errors.subcategory_key %}aria-invalid="true" aria-describedby="subcategory-key-error"{% endif %}
+              >
+                {% for entity_type, options in business_query_subcategory_options.items() %}
+                <optgroup label="{{ entity_type }}">
+                  {% for key, label in options %}
+                  <option value="{{ key }}"{% if business_query_form.subcategory_key == key %} selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </optgroup>
+                {% endfor %}
+              </select>
+              {% endif %}
+              {% if business_query_errors.subcategory_key %}
+              <p class="field-error" id="subcategory-key-error">{{ business_query_errors.subcategory_key }}</p>
+              {% endif %}
+
+              <label for="tax-year-filter">Tax year</label>
+              <select
+                id="tax-year-filter"
+                name="tax_year_filter"
+                {% if business_query_errors.tax_year_filter %}aria-invalid="true" aria-describedby="tax-year-filter-error"{% endif %}
+              >
+                <option value="{{ all_available_years }}"{% if business_query_form.tax_year_filter == all_available_years %} selected{% endif %}>All available years</option>
+                {% for tax_year in business_query_tax_year_options %}
+                <option value="{{ tax_year }}"{% if business_query_form.tax_year_filter == tax_year %} selected{% endif %}>{{ tax_year }}</option>
+                {% endfor %}
+              </select>
+              {% if business_query_errors.tax_year_filter %}
+              <p class="field-error" id="tax-year-filter-error">{{ business_query_errors.tax_year_filter }}</p>
+              {% endif %}
+
+              <label for="amount">Amount</label>
+              <input
+                id="amount"
+                name="amount"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="10000.00"
+                value="{{ business_query_form.amount }}"
+                {% if business_query_errors.amount %}aria-invalid="true" aria-describedby="amount-error"{% endif %}
+              >
+              {% if business_query_errors.amount %}
+              <p class="field-error" id="amount-error">{{ business_query_errors.amount }}</p>
+              {% endif %}
+
+              <label for="query-note">Note</label>
+              <textarea
+                id="query-note"
+                name="note"
+                rows="3"
+                placeholder="Optional rule description"
+              >{{ business_query_form.note }}</textarea>
+
+              <label for="group-id">Group</label>
+              <select
+                id="group-id"
+                name="group_id"
+                {% if business_query_errors.group_id %}aria-invalid="true" aria-describedby="group-id-error"{% endif %}
+              >
+                <option value=""{% if not business_query_form.group_id %} selected{% endif %}>Ungrouped</option>
+                {% for group in business_query_group_options %}
+                <option value="{{ group.id }}"{% if business_query_form.group_id == group.id %} selected{% endif %}>{{ group.group_name }}</option>
+                {% endfor %}
+              </select>
+              {% if business_query_errors.group_id %}
+              <p class="field-error" id="group-id-error">{{ business_query_errors.group_id }}</p>
+              {% endif %}
+
+              {% if business_query_status %}
+              <p class="form-success">{{ business_query_status }}</p>
+              {% endif %}
+
+              <div class="form-actions">
+                <button class="primary-action" type="submit">Save changes</button>
+                <a class="secondary-action" href="/app/business-query/queries">Cancel</a>
+              </div>
+            </form>
             {% elif section_key == "business-query-queries" %}
             <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
               <h2>Saved queries</h2>
@@ -299,6 +434,7 @@
                       <th scope="col">Subcategory</th>
                       <th scope="col">Tax year</th>
                       <th scope="col">Amount</th>
+                      <th scope="col">Group</th>
                       <th scope="col">Updated</th>
                       <th scope="col">Action</th>
                     </tr>
@@ -311,11 +447,15 @@
                       <td>{{ saved_query.subcategory_label }}</td>
                       <td>{{ saved_query.tax_year_filter }}</td>
                       <td>{{ saved_query.amount }}</td>
+                      <td>{{ saved_query.group_name }}</td>
                       <td>{{ saved_query.updated_at }}</td>
                       <td>
-                        <form method="get" action="/app/business-query/saved/{{ saved_query.id }}/load">
-                          <button class="secondary-action" type="submit">Load</button>
-                        </form>
+                        <div class="table-actions">
+                          <form method="get" action="/app/business-query/saved/{{ saved_query.id }}/load">
+                            <button class="secondary-action" type="submit">Load</button>
+                          </form>
+                          <a class="secondary-action" href="/app/business-query/queries/{{ saved_query.id }}/edit">Edit</a>
+                        </div>
                       </td>
                     </tr>
                     {% endfor %}

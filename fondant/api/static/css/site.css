@@ -311,6 +311,14 @@ h1 {
   align-items: end;
 }
 
+.form-actions,
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .form-note {
   margin: 0 0 0.5rem;
   color: var(--muted);
@@ -649,6 +657,7 @@ h1 {
   color: var(--accent-strong);
   font-weight: 700;
   font: inherit;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -747,9 +756,15 @@ h1 {
   }
 
   .login-link,
-  .primary-action {
+  .primary-action,
+  .secondary-action {
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .form-actions,
+  .table-actions {
+    align-items: stretch;
   }
 
   .portal-topbar form {

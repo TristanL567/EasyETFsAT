@@ -23,7 +23,7 @@ from fondant.api.main import create_app
 from fondant.api.routes import web as web_routes
 from fondant.business_query import BusinessQueryInput, BusinessQueryResult, BusinessQueryResultRow
 from fondant.db.base import Base
-from fondant.db.models import BQSAVED, INGJOB
+from fondant.db.models import BQGROUP, BQSAVED, INGJOB
 from fondant.db.session import get_session
 from fondant.search import FundSearchResult
 from fondant.tax_registry import TAX_LINES
@@ -177,6 +177,7 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/app/business-query" in route_paths
     assert "/app/business-query/new" in route_paths
     assert "/app/business-query/queries" in route_paths
+    assert "/app/business-query/queries/{saved_query_id}/edit" in route_paths
     assert "/app/business-query/save" in route_paths
     assert "/app/business-query/saved/{saved_query_id}/load" in route_paths
     assert "/app/search" in route_paths
@@ -246,6 +247,7 @@ async def test_app_redirects_unauthenticated_users_to_login(
         "/app/business-query",
         "/app/business-query/new",
         "/app/business-query/queries",
+        "/app/business-query/queries/1/edit",
         "/app/search",
         "/app/update-data",
         "/app/documentation",
@@ -470,6 +472,28 @@ async def test_business_query_save_redirects_unauthenticated_users_to_login(
 
 
 @pytest.mark.asyncio
+async def test_business_query_edit_redirects_unauthenticated_users_to_login(
+    web_client: httpx.AsyncClient,
+) -> None:
+    get_response = await web_client.get("/app/business-query/queries/1/edit")
+    assert get_response.status_code == 303
+    assert get_response.headers["location"] == "/login"
+
+    post_response = await web_client.post(
+        "/app/business-query/queries/1/edit",
+        data={
+            "query_name": "Monthly review",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "all_available_years",
+            "amount": "1000",
+        },
+    )
+    assert post_response.status_code == 303
+    assert post_response.headers["location"] == "/login"
+
+
+@pytest.mark.asyncio
 async def test_authenticated_user_can_save_business_query_with_structured_fields(
     saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
@@ -676,6 +700,9 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
     assert "<td>business</td>" in response.text
     assert "<td>BV mit Option</td>" in response.text
     assert "<td>2025</td>" in response.text
+    assert "<td>Ungrouped</td>" in response.text
+    assert "/app/business-query/queries/" in response.text
+    assert ">Edit</a>" in response.text
     assert "Other user rule" not in response.text
     assert "other-user" not in response.text
 
@@ -818,12 +845,418 @@ async def test_another_users_saved_business_query_cannot_be_loaded_or_displayed(
     assert "Other private rule" not in list_response.text
     assert "US0378331005" not in list_response.text
     assert f"/app/business-query/saved/{saved_query_id}/load" not in list_response.text
+    assert f"/app/business-query/queries/{saved_query_id}/edit" not in list_response.text
 
     load_response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
     assert load_response.status_code == 404
     assert "Other private rule" not in load_response.text
     assert "US0378331005" not in load_response.text
     assert "other-user" not in load_response.text
+
+
+@pytest.mark.asyncio
+async def test_owner_can_open_saved_business_query_edit_form(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Editable rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_with_option",
+            tax_year_filter="2025",
+            amount=Decimal("1000.00"),
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get(f"/app/business-query/queries/{saved_query_id}/edit")
+
+    assert response.status_code == 200
+    assert "<title>Edit Query - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Edit Query</h1>' in response.text
+    assert 'aria-label="Edit saved BusinessQuery rule"' in response.text
+    assert f'action="/app/business-query/queries/{saved_query_id}/edit"' in response.text
+    assert 'value="Editable rule"' in response.text
+    assert "Save changes" in response.text
+
+
+@pytest.mark.asyncio
+async def test_saved_business_query_edit_form_prefills_all_saved_fields(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        owned_group = BQGROUP(owner_username="admin", group_name="Quarterly reviews")
+        other_group = BQGROUP(owner_username="other-user", group_name="Other user group")
+        session.add_all([owned_group, other_group])
+        await session.flush()
+        saved_query = BQSAVED(
+            owner_username="admin",
+            group_id=owned_group.id,
+            query_name="Loaded edit rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_legal_person",
+            tax_year_filter="2025",
+            amount=Decimal("250.75"),
+            note="Stored edit note",
+            default_isins=["IE00BMTX1Y45", "LU1681044993"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+        owned_group_id = owned_group.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get(f"/app/business-query/queries/{saved_query_id}/edit")
+
+    assert response.status_code == 200
+    assert 'value="Loaded edit rule"' in response.text
+    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert '<option value="business" selected>business</option>' in response.text
+    assert '<option value="business_bv_legal_person" selected>BV jur. Person</option>' in response.text
+    assert '<option value="2025" selected>2025</option>' in response.text
+    assert 'value="250.7500000000"' in response.text
+    assert ">Stored edit note</textarea>" in response.text
+    assert f'<option value="{owned_group_id}" selected>Quarterly reviews</option>' in response.text
+    assert "Other user group" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_owner_can_update_saved_business_query_fields(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Original edit rule",
+            legal_entity_type="natural person",
+            subcategory_key="natural_person_all",
+            tax_year_filter="all_available_years",
+            amount=Decimal("100.00"),
+            note="Original note",
+            default_isins=["IE00BMTX1Y45"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        data={
+            "query_name": " Updated edit rule ",
+            "isins": "lu1681044993 us0378331005",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_without_option",
+            "tax_year_filter": "2025",
+            "amount": "777.25",
+            "note": " Updated note ",
+            "group_id": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Saved query updated." in response.text
+    assert 'value="Updated edit rule"' in response.text
+    assert ">LU1681044993\nUS0378331005</textarea>" in response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED).where(BQSAVED.id == saved_query_id))
+
+    assert saved_query is not None
+    assert saved_query.query_name == "Updated edit rule"
+    assert saved_query.legal_entity_type == "business"
+    assert saved_query.subcategory_key == "business_bv_without_option"
+    assert saved_query.tax_year_filter == "2025"
+    assert saved_query.amount == Decimal("777.2500000000")
+    assert saved_query.note == "Updated note"
+    assert saved_query.default_isins == ["LU1681044993", "US0378331005"]
+
+
+@pytest.mark.asyncio
+async def test_owner_can_assign_and_remove_saved_business_query_group(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        group = BQGROUP(owner_username="admin", group_name="Tax review")
+        other_group = BQGROUP(owner_username="other-user", group_name="Hidden group")
+        session.add_all([group, other_group])
+        await session.flush()
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Group edit rule",
+            legal_entity_type="business",
+            subcategory_key="business_all",
+            tax_year_filter="2025",
+            amount=Decimal("100.00"),
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+        group_id = group.id
+        other_group_id = other_group.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    assign_response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        data={
+            "query_name": "Group edit rule",
+            "isins": "",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "2025",
+            "amount": "100",
+            "note": "",
+            "group_id": str(group_id),
+        },
+    )
+    assert assign_response.status_code == 200
+    assert "Saved query updated." in assign_response.text
+    assert f'<option value="{group_id}" selected>Tax review</option>' in assign_response.text
+
+    invalid_group_response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        data={
+            "query_name": "Group edit rule",
+            "isins": "",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "2025",
+            "amount": "100",
+            "note": "",
+            "group_id": str(other_group_id),
+        },
+    )
+    assert invalid_group_response.status_code == 200
+    assert "Choose one of your saved query groups." in invalid_group_response.text
+    assert "Hidden group" not in invalid_group_response.text
+
+    remove_response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        data={
+            "query_name": "Group edit rule",
+            "isins": "",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "2025",
+            "amount": "100",
+            "note": "",
+            "group_id": "",
+        },
+    )
+    assert remove_response.status_code == 200
+    assert "Saved query updated." in remove_response.text
+    assert '<option value="" selected>Ungrouped</option>' in remove_response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED).where(BQSAVED.id == saved_query_id))
+
+    assert saved_query is not None
+    assert saved_query.group_id is None
+
+
+@pytest.mark.asyncio
+async def test_another_users_saved_business_query_cannot_be_viewed_or_edited_by_id(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="other-user",
+            query_name="Other edit rule",
+            legal_entity_type="Stiftung",
+            subcategory_key="stiftung",
+            tax_year_filter="all_available_years",
+            amount=Decimal("500.00"),
+            note="Other edit note",
+            default_isins=["US0378331005"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    get_response = await web_client.get(f"/app/business-query/queries/{saved_query_id}/edit")
+    assert get_response.status_code == 404
+    assert "Other edit rule" not in get_response.text
+    assert "US0378331005" not in get_response.text
+    assert "other-user" not in get_response.text
+
+    post_response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        data={
+            "query_name": "Hijacked rule",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "2025",
+            "amount": "1000",
+            "note": "changed",
+            "group_id": "",
+        },
+    )
+    assert post_response.status_code == 404
+    assert "Hijacked rule" not in post_response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED).where(BQSAVED.id == saved_query_id))
+
+    assert saved_query is not None
+    assert saved_query.query_name == "Other edit rule"
+    assert saved_query.note == "Other edit note"
+    assert saved_query.default_isins == ["US0378331005"]
+
+
+@pytest.mark.asyncio
+async def test_saved_business_query_edit_duplicate_name_for_same_user_shows_validation_error(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        session.add_all(
+            [
+                BQSAVED(
+                    owner_username="admin",
+                    query_name="Existing rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_all",
+                    tax_year_filter="2025",
+                    amount=Decimal("100.00"),
+                ),
+                BQSAVED(
+                    owner_username="admin",
+                    query_name="Second rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_all",
+                    tax_year_filter="2025",
+                    amount=Decimal("200.00"),
+                ),
+            ]
+        )
+        await session.commit()
+        second_query = await session.scalar(
+            select(BQSAVED).where(BQSAVED.query_name == "Second rule")
+        )
+        assert second_query is not None
+        second_query_id = second_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        f"/app/business-query/queries/{second_query_id}/edit",
+        data={
+            "query_name": "Existing rule",
+            "isins": "",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_all",
+            "tax_year_filter": "2025",
+            "amount": "200",
+            "note": "",
+            "group_id": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "A saved query with this name already exists." in response.text
+    assert "IntegrityError" not in response.text
+    assert "UNIQUE constraint" not in response.text
+
+    async with session_factory() as session:
+        saved_queries = (
+            await session.scalars(select(BQSAVED).order_by(BQSAVED.query_name))
+        ).all()
+
+    assert [query.query_name for query in saved_queries] == ["Existing rule", "Second rule"]
+
+
+@pytest.mark.asyncio
+async def test_saved_business_query_listing_reflects_edited_values(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        group = BQGROUP(owner_username="admin", group_name="Edited group")
+        session.add(group)
+        await session.flush()
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Before list edit",
+            legal_entity_type="natural person",
+            subcategory_key="natural_person_all",
+            tax_year_filter="all_available_years",
+            amount=Decimal("100.00"),
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+        group_id = group.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    edit_response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        data={
+            "query_name": "After list edit",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_without_option",
+            "tax_year_filter": "2025",
+            "amount": "300.50",
+            "note": "",
+            "group_id": str(group_id),
+        },
+    )
+    assert edit_response.status_code == 200
+
+    list_response = await web_client.get("/app/business-query/queries")
+
+    assert list_response.status_code == 200
+    assert "<td>After list edit</td>" in list_response.text
+    assert "<td>business</td>" in list_response.text
+    assert "<td>BV ohne Option</td>" in list_response.text
+    assert "<td>2025</td>" in list_response.text
+    assert "<td>300.5000000000</td>" in list_response.text
+    assert "<td>Edited group</td>" in list_response.text
+    assert "Before list edit" not in list_response.text
 
 
 @pytest.mark.asyncio

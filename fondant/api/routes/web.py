@@ -28,7 +28,7 @@ from fondant.business_query import (
     execute_business_query,
 )
 from fondant.config import Settings, get_settings
-from fondant.db.models import BQSAVED, INGJOB
+from fondant.db.models import BQGROUP, BQSAVED, INGJOB
 from fondant.db.session import get_session
 from fondant.search import FundSearchResult, has_available_fund_data, search_available_funds
 from fondant.tax_registry import TAX_LINES
@@ -112,6 +112,15 @@ APP_SECTIONS = {
         "nav_parent": "business-query",
         "hide_from_primary_nav": True,
     },
+    "business-query-edit": {
+        "section_key": "business-query-edit",
+        "label": "Edit Query",
+        "path": "/app/business-query/queries",
+        "title": "Edit Query",
+        "summary": "Update a saved BusinessQuery rule.",
+        "nav_parent": "business-query",
+        "hide_from_primary_nav": True,
+    },
     "search": {
         "section_key": "search",
         "label": "Search",
@@ -145,6 +154,7 @@ def _empty_business_query_form() -> dict[str, str]:
         "tax_year_filter": ALL_AVAILABLE_YEARS,
         "amount": "",
         "note": "",
+        "group_id": "",
     }
 
 
@@ -268,6 +278,7 @@ def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, str
             "tax_year_filter": saved_query.tax_year_filter,
             "amount": str(saved_query.amount),
             "note": saved_query.note or "",
+            "group_id": str(saved_query.group_id or ""),
         }
     )
     return form
@@ -335,6 +346,7 @@ async def _saved_business_queries(
             .order_by(BQSAVED.updated_at.desc(), BQSAVED.id.desc())
         )
     ).all()
+    group_names = await _business_query_group_names(session, username)
 
     return tuple(
         {
@@ -349,10 +361,72 @@ async def _saved_business_queries(
                 saved_query.tax_year_filter
             ),
             "amount": str(saved_query.amount),
+            "group_name": group_names.get(saved_query.group_id or 0, "Ungrouped"),
             "updated_at": _format_optional_timestamp(saved_query.updated_at),
         }
         for saved_query in saved_queries
     )
+
+
+async def _business_query_group_names(session: AsyncSession, username: str) -> dict[int, str]:
+    groups = (
+        await session.scalars(
+            select(BQGROUP)
+            .where(BQGROUP.owner_username == username)
+            .order_by(BQGROUP.group_name.asc(), BQGROUP.id.asc())
+        )
+    ).all()
+    return {group.id: group.group_name for group in groups}
+
+
+async def _business_query_group_options(
+    session: AsyncSession,
+    username: str,
+) -> tuple[dict[str, str], ...]:
+    groups = (
+        await session.scalars(
+            select(BQGROUP)
+            .where(BQGROUP.owner_username == username)
+            .order_by(BQGROUP.group_name.asc(), BQGROUP.id.asc())
+        )
+    ).all()
+    return tuple({"id": str(group.id), "group_name": group.group_name} for group in groups)
+
+
+async def _saved_business_query_for_owner(
+    session: AsyncSession,
+    username: str,
+    saved_query_id: int,
+) -> BQSAVED | None:
+    return await session.scalar(
+        select(BQSAVED).where(
+            BQSAVED.id == saved_query_id,
+            BQSAVED.owner_username == username,
+        )
+    )
+
+
+async def _validate_business_query_group_assignment(
+    session: AsyncSession,
+    username: str,
+    group_id_text: str,
+) -> tuple[str | None, int | None]:
+    if not group_id_text:
+        return None, None
+    try:
+        group_id = int(group_id_text)
+    except ValueError:
+        return "Choose one of your saved query groups.", None
+
+    group = await session.scalar(
+        select(BQGROUP).where(
+            BQGROUP.id == group_id,
+            BQGROUP.owner_username == username,
+        )
+    )
+    if group is None:
+        return "Choose one of your saved query groups.", None
+    return None, group_id
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -486,6 +560,8 @@ def _render_app_shell(
     business_query_status: str = "",
     business_query_result: BusinessQueryResult | None = None,
     saved_business_queries: tuple[dict[str, str], ...] = (),
+    business_query_group_options: tuple[dict[str, str], ...] = (),
+    edit_saved_query_id: int | None = None,
     search_query: str = "",
     search_results: tuple[FundSearchResult, ...] = (),
     search_submitted: bool = False,
@@ -524,6 +600,8 @@ def _render_app_shell(
             "business_query_status": business_query_status,
             "business_query_result": business_query_result,
             "saved_business_queries": saved_business_queries,
+            "business_query_group_options": business_query_group_options,
+            "edit_saved_query_id": edit_saved_query_id,
             "search_query": search_query,
             "search_results": search_results,
             "search_submitted": search_submitted,
@@ -638,6 +716,89 @@ async def app_business_query_queries(
     )
 
 
+@router.get("/app/business-query/queries/{saved_query_id}/edit", response_class=HTMLResponse)
+async def edit_business_query_form(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    saved_query_id: int,
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    saved_query = await _saved_business_query_for_owner(session, username, saved_query_id)
+    if saved_query is None:
+        raise HTTPException(status_code=404, detail="Saved query not found")
+
+    return _render_app_shell(
+        request,
+        "business-query-edit",
+        business_query_form=_business_query_form_from_saved_query(saved_query),
+        saved_business_queries=await _saved_business_queries(session, username),
+        business_query_group_options=await _business_query_group_options(session, username),
+        edit_saved_query_id=saved_query_id,
+    )
+
+
+@router.post("/app/business-query/queries/{saved_query_id}/edit", response_class=HTMLResponse)
+async def edit_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    saved_query_id: int,
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    saved_query = await _saved_business_query_for_owner(session, username, saved_query_id)
+    if saved_query is None:
+        raise HTTPException(status_code=404, detail="Saved query not found")
+
+    form = await request.form()
+    form_values = _business_query_form_values(form)
+    group_id_text = str(form.get("group_id", "")).strip()
+    form_values["group_id"] = group_id_text
+    errors, preview = _validate_business_query_form(form_values, require_isins=False)
+    group_error, group_id = await _validate_business_query_group_assignment(
+        session,
+        username,
+        group_id_text,
+    )
+    if group_error:
+        errors["group_id"] = group_error
+
+    status = ""
+    if preview is not None and not errors:
+        form_values = _normalized_business_query_form(preview)
+        form_values["group_id"] = group_id_text
+        saved_query.group_id = group_id
+        saved_query.query_name = str(preview["query_name"])
+        saved_query.legal_entity_type = str(preview["legal_entity_type"])
+        saved_query.subcategory_key = str(preview["subcategory_key"])
+        saved_query.tax_year_filter = str(preview["tax_year_filter"])
+        saved_query.amount = Decimal(str(preview["amount"]))
+        saved_query.note = str(preview["note"]) or None
+        saved_query.default_isins = cast(list[str], preview["isins"]) or None
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            errors["query_name"] = "A saved query with this name already exists."
+        else:
+            status = "Saved query updated."
+
+    return _render_app_shell(
+        request,
+        "business-query-edit",
+        business_query_form=form_values,
+        business_query_errors=errors,
+        business_query_status=status,
+        saved_business_queries=await _saved_business_queries(session, username),
+        business_query_group_options=await _business_query_group_options(session, username),
+        edit_saved_query_id=saved_query_id,
+    )
+
+
 @router.post("/app/business-query/save", response_class=HTMLResponse)
 async def save_business_query(
     request: Request,
@@ -692,12 +853,7 @@ async def load_business_query(
     if username is None:
         return RedirectResponse(url="/login", status_code=303)
 
-    saved_query = await session.scalar(
-        select(BQSAVED).where(
-            BQSAVED.id == saved_query_id,
-            BQSAVED.owner_username == username,
-        )
-    )
+    saved_query = await _saved_business_query_for_owner(session, username, saved_query_id)
     if saved_query is None:
         raise HTTPException(status_code=404, detail="Saved query not found")
 
