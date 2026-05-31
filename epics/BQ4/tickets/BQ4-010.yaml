@@ -1,0 +1,38 @@
+ticket_id: BQ4-010
+goal: Update in-app documentation for field selection, Queries, and Group BusinessQuery.
+dependencies:
+  - BQ4-009 approved
+allowed_areas:
+  - fondant/api/templates/app.html
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Explain selecting one or more tax fields.
+  - Explain Add New Query, Queries, and Group BusinessQuery.
+  - Explain direct Run from Queries.
+  - Keep text concise and user-facing.
+non_goals:
+  - No execution changes.
+  - No schema changes.
+  - No route logic changes unless static context is unavoidable.
+acceptance_criteria:
+  - Documentation page includes the new workflow explanations.
+  - Tests assert the key guidance text.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Non-technical users need plain guidance for the expanded workflow.
+user_or_operator_outcome: Users understand where to create, run, and group queries.
+design_concept: Documentation explains workflow, not implementation internals.
+architecture_boundary: Template/test only.
+success_signal: Web tests verify help text.
+tradeoffs_or_constraints: Avoid exposing internal view names as primary help.
+

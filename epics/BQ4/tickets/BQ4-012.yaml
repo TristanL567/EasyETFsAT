@@ -1,0 +1,37 @@
+ticket_id: BQ4-012
+goal: Create final BQ4 epic handoff.
+dependencies:
+  - BQ4-011 approved
+allowed_areas:
+  - Documentation/Validation/BQ4-012_BUSINESS_QUERY_MANAGEMENT_FINAL_HANDOFF.md
+must_not_touch:
+  - fondant/
+  - alembic/
+  - tests/
+  - .env
+requirements:
+  - Summarize BQ4-001 through BQ4-011.
+  - Document final user flow.
+  - Document migrations and expected Alembic head.
+  - Document validation evidence and known limitations.
+  - Document deployment note requiring alembic upgrade head.
+non_goals:
+  - No code changes.
+  - No tests changed.
+  - No migrations.
+acceptance_criteria:
+  - Final handoff exists and is readable standalone.
+  - Handoff includes limitations and follow-ups.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - rg -n "BQ4-001|BQ4-011|Queries|Group BusinessQuery|Run|field selection|V2_TAXDATHOMCCY|alembic upgrade head|known limitations|follow-up" Documentation/Validation/BQ4-012_BUSINESS_QUERY_MANAGEMENT_FINAL_HANDOFF.md
+  - git diff --check
+  - git status --short --branch --untracked-files=all
+completion_report_required: true
+business_context: Final handoff closes the epic for deployment and future planning.
+user_or_operator_outcome: Human can merge/deploy with clear expectations.
+design_concept: Concise final audit document.
+architecture_boundary: Documentation only.
+success_signal: Handoff validates and no code changes occur.
+tradeoffs_or_constraints: Do not claim browser QA unless performed.

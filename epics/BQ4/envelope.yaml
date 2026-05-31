@@ -1,0 +1,59 @@
+epic_id: BQ4
+goal: >
+  Refine BusinessQuery query management so saved queries are managed under
+  Queries, runnable directly from that page, groups are managed under a separate
+  Group BusinessQuery subsection, and BusinessQuery can select one or more tax
+  fields backed by an expanded V2_TAXDATHOMCCY view.
+branch: development
+base: main
+autonomy_policy: manual
+human_checkpoint_tickets:
+  - BQ4-001
+  - BQ4-004
+  - BQ4-008
+  - BQ4-012
+epic_allowed_areas:
+  - epics/BQ4/
+  - Documentation/Validation/
+  - alembic/versions/
+  - fondant/business_query.py
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - fondant/db/models/
+  - tests/
+epic_must_not_touch:
+  - .env
+  - .env.example
+  - docker-compose.yml
+  - pyproject.toml
+  - README.md
+  - fondant/config.py
+  - fondant/ingestion/
+  - fondant/oekb/
+  - fondant/ecb/
+  - scripts/
+  - easyetfsat.egg-info/
+  - .git/
+tickets:
+  - BQ4-001
+  - BQ4-002
+  - BQ4-003
+  - BQ4-004
+  - BQ4-005
+  - BQ4-006
+  - BQ4-007
+  - BQ4-008
+  - BQ4-009
+  - BQ4-010
+  - BQ4-011
+  - BQ4-012
+depends_on_epics:
+  - BQ2 merged to main at 63ebfa5 or later
+  - BQ3 merged to main at 7e1c84b or later
+merge_policy:
+  strategy: fast-forward
+  target_base: main
+  requires_epic_validator: true
+  requires_human_approval: true
+

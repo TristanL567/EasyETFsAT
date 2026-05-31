@@ -1,0 +1,42 @@
+ticket_id: BQ4-008
+goal: Add direct Run action for saved queries on the Queries page.
+dependencies:
+  - BQ4-007 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - alembic/
+  - fondant/db/models/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Add a Run action for each saved query on Queries.
+  - Running uses the saved query rule and its default ISINs.
+  - If a saved query has no default ISINs, render a friendly message explaining the user must load/edit or add ISINs first.
+  - Preserve owner scoping.
+  - Preserve existing Load and Edit actions.
+non_goals:
+  - No schema changes.
+  - No BusinessQuery service changes.
+  - No group creation changes.
+acceptance_criteria:
+  - Owner can run a saved query directly from Queries.
+  - Non-owner cannot run another user's query.
+  - Missing default ISINs do not crash or run an empty query silently.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Direct rerun is the main usability improvement requested by the user.
+user_or_operator_outcome: Users rerun existing saved queries without navigating to Add New Query first.
+design_concept: Direct Run is an action on an existing saved rule.
+architecture_boundary: Web route/template only.
+success_signal: Web tests show direct run result rendering.
+tradeoffs_or_constraints: Do not invent background jobs; this is normal BusinessQuery execution.
+

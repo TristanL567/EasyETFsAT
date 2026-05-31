@@ -1,0 +1,46 @@
+ticket_id: BQ4-002
+goal: Expand V2_TAXDATHOMCCY so BusinessQuery can support all active tax fields.
+dependencies:
+  - BQ4-001 approved
+  - Alembic head 20260531_0016
+allowed_areas:
+  - alembic/versions/
+  - tests/test_migrations.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/api/
+  - fondant/db/models/
+  - Documentation/Validation/
+  - .env
+  - .env.example
+  - docker-compose.yml
+requirements:
+  - Add a migration after the current head.
+  - Update V2_TAXDATHOMCCY to expose HOMCCY and EUR columns for every active TAX_LINES code and supported suffix PVM/PVO/BVM/BVO/BVJ/STI.
+  - Preserve identity, currency, FX rate, and FX date columns.
+  - Do not change V2_TAXDATEUR unless the migration must recreate dependent objects safely.
+  - Add migration tests for representative new fields such as K11, plus existing K40/K61/K62 coverage.
+non_goals:
+  - No BusinessQuery service changes.
+  - No UI or route changes.
+  - No saved query schema changes.
+  - No Render config changes.
+acceptance_criteria:
+  - Alembic head advances to a new revision.
+  - V2_TAXDATHOMCCY includes representative all-field columns with _HOMCCY and _EUR suffixes.
+  - Existing migration tests pass.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_migrations.py
+  - py -3.10 -m alembic heads
+  - py -3.10 -m ruff check alembic tests
+  - git diff --check
+completion_report_required: true
+business_context: Broader tax field coverage is required for realistic Austrian ETF tax review.
+user_or_operator_outcome: BusinessQuery can later offer field choices beyond K40/K61/K62.
+design_concept: Reporting view remains the source-backed, dual-currency read model.
+architecture_boundary: Alembic reporting view only.
+success_signal: Migration tests prove the expanded view columns exist.
+tradeoffs_or_constraints: Keep lineage auditable and avoid user-controlled SQL.
+

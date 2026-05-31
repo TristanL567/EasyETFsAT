@@ -1,0 +1,37 @@
+ticket_id: BQ4-011
+goal: Add final regression and readiness checks for BusinessQuery management changes.
+dependencies:
+  - BQ4-010 approved
+allowed_areas:
+  - tests/
+  - Documentation/Validation/BQ4-011_BUSINESS_QUERY_MANAGEMENT_READINESS.md
+must_not_touch:
+  - fondant/
+  - alembic/
+  - .env
+requirements:
+  - Add or update only focused tests if coverage gaps remain.
+  - Create a readiness note summarizing covered workflows and manual visual QA status.
+  - Do not alter product code unless blocked and explicitly reported.
+non_goals:
+  - No new features.
+  - No schema changes.
+  - No UI behavior changes.
+acceptance_criteria:
+  - Full relevant test set passes or skipped checks are documented.
+  - Readiness note identifies residual risks.
+manual_verification_required: true
+manual_verification_steps:
+  - Review Add New Query, Queries, and Group BusinessQuery in browser if feasible.
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py tests/test_saved_business_query_model.py tests/test_migrations.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Final readiness reduces regressions before merge.
+user_or_operator_outcome: Stakeholders receive evidence that the workflow is coherent.
+design_concept: Regression-focused hardening.
+architecture_boundary: Tests and readiness doc.
+success_signal: Tests pass and readiness doc is created.
+tradeoffs_or_constraints: Avoid adding product behavior during readiness.
+

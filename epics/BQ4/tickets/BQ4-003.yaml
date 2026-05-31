@@ -1,0 +1,41 @@
+ticket_id: BQ4-003
+goal: Extend the BusinessQuery service to support selecting one or more tax fields.
+dependencies:
+  - BQ4-002 approved
+allowed_areas:
+  - fondant/business_query.py
+  - tests/test_business_query_service.py
+must_not_touch:
+  - fondant/api/
+  - fondant/db/models/
+  - alembic/
+  - Documentation/Validation/
+  - .env
+requirements:
+  - Add a structured selected tax fields input while preserving current default behavior.
+  - Support one or more active TAX_LINES codes.
+  - Validate field codes through a whitelist sourced from tax registry metadata.
+  - Query only whitelisted V2_TAXDATHOMCCY columns.
+  - Preserve legal entity, subcategory, tax year, amount, dual-currency, and missing-year behavior.
+non_goals:
+  - No UI changes.
+  - No route changes.
+  - No CSV changes.
+  - No migrations.
+acceptance_criteria:
+  - Existing service behavior remains compatible when no field selection is supplied.
+  - Tests cover single field, multiple fields, invalid field rejection, and amount multiplication.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_business_query_service.py tests/test_tax_registry.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Users need to focus reports on the tax fields relevant to their review.
+user_or_operator_outcome: A later GUI can safely offer field multi-select.
+design_concept: Field selection is structured and whitelist-based.
+architecture_boundary: BusinessQuery service only.
+success_signal: Service tests prove selected fields control returned rows.
+tradeoffs_or_constraints: Do not expose raw column or SQL selection to users.
+

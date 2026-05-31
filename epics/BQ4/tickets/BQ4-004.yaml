@@ -1,0 +1,42 @@
+ticket_id: BQ4-004
+goal: Add BusinessQuery tax field multi-select controls to Add New Query and persistence paths.
+dependencies:
+  - BQ4-003 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Add a user-friendly tax field multi-select on Add New Query using labels such as K11 - AG Ertraege.
+  - Submit selected tax fields to BusinessQueryInput.
+  - Preserve selection on validation errors and result rendering.
+  - Keep default selection compatible with prior behavior.
+  - Do not change saved query schema in this ticket.
+non_goals:
+  - No schema changes.
+  - No query group management changes.
+  - No direct-run saved query behavior.
+acceptance_criteria:
+  - GET renders tax field choices from registry metadata.
+  - POST passes selected fields into service.
+  - Invalid field submissions are rejected before service execution.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Field choice turns BusinessQuery into a targeted review tool.
+user_or_operator_outcome: Users can choose one or more fields without knowing internal codes.
+design_concept: Multi-select uses friendly labels and preserves existing form workflow.
+architecture_boundary: Web UI/routes only.
+success_signal: Web tests prove selected fields reach the service.
+tradeoffs_or_constraints: Saved persistence follows in a later ticket.
+

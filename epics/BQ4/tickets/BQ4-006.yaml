@@ -1,0 +1,40 @@
+ticket_id: BQ4-006
+goal: Wire saved-query save, load, edit, run, and export flows to selected tax fields.
+dependencies:
+  - BQ4-005 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - tests/test_web_routes.py
+must_not_touch:
+  - alembic/
+  - fondant/db/models/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Save selected tax fields into BQSAVED.
+  - Load and edit selected tax fields.
+  - Ensure run and CSV export use current submitted field selections.
+  - Preserve owner scoping and friendly validation errors.
+non_goals:
+  - No schema changes.
+  - No new group management UI.
+  - No delete/archive.
+acceptance_criteria:
+  - Saved query create/edit stores selected fields.
+  - Load restores selected fields.
+  - Export uses submitted current fields.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_saved_business_query_model.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Saved rule reuse must include the new field-selection behavior.
+user_or_operator_outcome: Users can save, edit, and rerun field-specific query rules.
+design_concept: Current form state remains the source for run/export.
+architecture_boundary: Web routes/templates/tests only.
+success_signal: Web tests cover save/load/edit/export field persistence.
+tradeoffs_or_constraints: Keep CSV format changes limited to selected rows, not metadata sections.
+

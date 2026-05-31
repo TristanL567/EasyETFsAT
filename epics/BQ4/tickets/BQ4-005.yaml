@@ -1,0 +1,40 @@
+ticket_id: BQ4-005
+goal: Persist selected tax fields in saved BusinessQuery definitions.
+dependencies:
+  - BQ4-004 approved
+allowed_areas:
+  - alembic/versions/
+  - fondant/db/models/business_query.py
+  - fondant/db/models/__init__.py
+  - tests/test_migrations.py
+  - tests/test_saved_business_query_model.py
+must_not_touch:
+  - fondant/api/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Add structured selected tax fields storage to BQSAVED.
+  - Preserve backward compatibility for existing saved queries.
+  - Add model and migration tests.
+non_goals:
+  - No UI route wiring.
+  - No BusinessQuery execution changes.
+  - No CSV changes.
+acceptance_criteria:
+  - Migration adds nullable or default-compatible field storage.
+  - Saved queries can store one or multiple selected fields.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_migrations.py tests/test_saved_business_query_model.py
+  - py -3.10 -m alembic heads
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Saved query rules must remember selected tax fields.
+user_or_operator_outcome: Loading a saved query restores field choices.
+design_concept: Persist structured field choices, not raw SQL.
+architecture_boundary: Schema/model only.
+success_signal: Model tests prove field storage works.
+tradeoffs_or_constraints: Existing saved rules must remain usable.
+

@@ -1,0 +1,41 @@
+ticket_id: BQ4-007
+goal: Move group creation out of Queries and into Group BusinessQuery subsection.
+dependencies:
+  - BQ4-006 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - alembic/
+  - fondant/db/models/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Add BusinessQuery subnavigation with Add New Query, Queries, and Group BusinessQuery.
+  - Queries page must show existing saved queries only and must not contain group creation controls.
+  - Group BusinessQuery page must create and list groups owned by the authenticated user.
+  - Preserve group filtering if still useful, but group creation belongs only to Group BusinessQuery.
+non_goals:
+  - No schema changes.
+  - No saved query delete/archive.
+  - No BusinessQuery calculation changes.
+acceptance_criteria:
+  - Navigation shows three BusinessQuery subsections.
+  - Queries page lists saved queries and has direct actions but no group creation form.
+  - Group BusinessQuery page creates groups with duplicate handling.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Separating groups from queries reduces confusion for non-technical users.
+user_or_operator_outcome: Users manage existing queries separately from group setup.
+design_concept: Three clear subsections under BusinessQuery.
+architecture_boundary: Web UI/routes only.
+success_signal: Web tests prove separation and auth behavior.
+tradeoffs_or_constraints: Avoid duplicating group creation on multiple pages.
+

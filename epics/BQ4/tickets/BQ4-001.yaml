@@ -1,0 +1,54 @@
+ticket_id: BQ4-001
+goal: Define the detailed BusinessQuery Query Management and Field Selection requirements before implementation.
+dependencies:
+  - Documentation/Validation/BQ2-012_BUSINESS_QUERY_V2_FINAL_HANDOFF.md
+  - Current repo branch must be development.
+allowed_areas:
+  - Documentation/Validation/BQ4-001_BUSINESS_QUERY_MANAGEMENT_AND_FIELD_SELECTION_REQUIREMENTS.md
+must_not_touch:
+  - fondant/
+  - alembic/
+  - tests/
+  - scripts/
+  - .env
+  - .env.example
+  - docker-compose.yml
+  - pyproject.toml
+requirements:
+  - Document the current BusinessQuery state, including Add New Query, Queries, BQSAVED, BQGROUP, V2_TAXDATHOMCCY, dual-currency results, and CSV export.
+  - Define the desired Queries page as a saved-query-only page with a direct Run action for each saved query.
+  - Define Group BusinessQuery as a separate third BusinessQuery subsection where users create and name groups.
+  - Define one-or-more tax field selection in Add New Query and saved query persistence.
+  - Define expanded V2_TAXDATHOMCCY field coverage for all active TAX_LINES, not just K40/K61/K62.
+  - Include user-friendly behavior for non-technical users.
+  - List BQ4-002 through BQ4-012 follow-up tickets.
+non_goals:
+  - No code changes.
+  - No migrations.
+  - No UI implementation.
+  - No service behavior changes.
+  - No commits or pushes by the master-agent.
+acceptance_criteria:
+  - Requirements document exists and is readable standalone.
+  - Document mentions Queries, Group BusinessQuery, direct Run action, field selection, V2_TAXDATHOMCCY, BQSAVED, BQGROUP, and active TAX_LINES.
+  - Scope is documentation-only.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - rg -n "Queries|Group BusinessQuery|Run|field selection|V2_TAXDATHOMCCY|BQSAVED|BQGROUP|TAX_LINES|K11" Documentation/Validation/BQ4-001_BUSINESS_QUERY_MANAGEMENT_AND_FIELD_SELECTION_REQUIREMENTS.md
+  - git diff --check
+  - git status --short --branch --untracked-files=all
+completion_report_required: true
+business_context: >
+  Users need to manage saved rules without confusing group management with query
+  execution, and they need broader tax field selection for real tax review.
+user_or_operator_outcome: >
+  Non-technical users can understand the planned query workflows before code is
+  changed.
+design_concept: >
+  Keep Add New Query as the creation/run workflow, Queries as saved-query
+  execution and editing, and Group BusinessQuery as group management.
+architecture_boundary: Documentation only.
+success_signal: A validated requirements artifact can drive implementation tickets.
+tradeoffs_or_constraints: Later implementation must avoid raw SQL and preserve owner scoping.
+

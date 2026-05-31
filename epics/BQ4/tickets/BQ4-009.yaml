@@ -1,0 +1,41 @@
+ticket_id: BQ4-009
+goal: Tighten Queries page so it displays existing saved queries clearly.
+dependencies:
+  - BQ4-008 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - alembic/
+  - fondant/db/models/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Ensure Queries page focuses only on existing saved queries.
+  - Keep actions clear: Run, Load, Edit.
+  - Keep grouping/filtering readable.
+  - Improve empty states for no queries and group filters.
+non_goals:
+  - No group creation controls.
+  - No schema changes.
+  - No delete/archive.
+acceptance_criteria:
+  - Queries page has no create group form.
+  - Existing queries are readable and actionable.
+manual_verification_required: true
+manual_verification_steps:
+  - Human or browser-based reviewer should inspect the Queries page after implementation if feasible.
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Queries must be low-friction for users who just want to rerun saved rules.
+user_or_operator_outcome: Saved queries are visible and runnable without setup clutter.
+design_concept: Queries is a management and execution list, not a creation hub.
+architecture_boundary: Web UI only.
+success_signal: Tests and optional visual QA confirm page clarity.
+tradeoffs_or_constraints: No broad redesign beyond this page.
+
