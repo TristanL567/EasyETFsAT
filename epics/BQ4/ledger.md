@@ -12,3 +12,5 @@
 | 2026-05-31T22:20:51+02:00 | BQ4-005 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: migration/model tests, alembic heads 20260531_0018, ruff, diff check. | null |
 | 2026-05-31T22:21:39+02:00 | BQ4-006 | dispatched | automatic_dispatch | BQ4-006 is not a human checkpoint; dispatching saved-query selected-field route wiring after BQ4-005 commit 0065fc4. | 0065fc4 |
 | 2026-05-31T22:27:52+02:00 | BQ4-006 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web/model/service tests, ruff, diff check. | null |
+| 2026-05-31T22:28:31+02:00 | BQ4-007 | dispatched | automatic_dispatch | BQ4-007 is not a human checkpoint; dispatching BusinessQuery subgroup separation ticket after BQ4-006 commit 9c04264. | 9c04264 |
+| 2026-05-31T22:35:15+02:00 | BQ4-007 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web route tests, ruff, diff check. | null |

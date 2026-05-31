@@ -104,6 +104,11 @@ APP_SECTIONS = {
                 "path": "/app/business-query/queries",
                 "section_key": "business-query-queries",
             },
+            {
+                "label": "Group BusinessQuery",
+                "path": "/app/business-query/groups",
+                "section_key": "business-query-groups",
+            },
         ),
     },
     "business-query-queries": {
@@ -121,6 +126,15 @@ APP_SECTIONS = {
         "path": "/app/business-query/queries",
         "title": "Edit Query",
         "summary": "Update a saved BusinessQuery rule.",
+        "nav_parent": "business-query",
+        "hide_from_primary_nav": True,
+    },
+    "business-query-groups": {
+        "section_key": "business-query-groups",
+        "label": "Group BusinessQuery",
+        "path": "/app/business-query/groups",
+        "title": "Group BusinessQuery",
+        "summary": "Create and review saved-query groups for BusinessQuery.",
         "nav_parent": "business-query",
         "hide_from_primary_nav": True,
     },
@@ -921,20 +935,28 @@ async def create_business_query_group(
             group_form = {"group_name": "", "description": ""}
 
     group_options = await _business_query_group_options(session, username)
-    saved_queries = await _saved_business_queries(session, username)
     return _render_app_shell(
         request,
-        "business-query-queries",
+        "business-query-groups",
         business_query_status=status,
-        saved_business_queries=saved_queries,
         business_query_group_options=group_options,
-        grouped_saved_business_queries=_group_saved_business_queries(
-            saved_queries,
-            group_options,
-            "",
-        ),
         business_query_group_form=group_form,
         business_query_group_errors=errors,
+    )
+
+
+@router.get("/app/business-query/groups", response_class=HTMLResponse)
+async def app_business_query_groups(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+    return _render_app_shell(
+        request,
+        "business-query-groups",
+        business_query_group_options=await _business_query_group_options(session, username),
     )
 
 

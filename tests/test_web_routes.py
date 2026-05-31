@@ -273,16 +273,18 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
     assert 'aria-label="Primary sections"' in response.text
-    assert response.text.count('class="portal-nav-link') == 6
+    assert response.text.count('class="portal-nav-link') == 7
     assert ">BusinessQuery<" in response.text
     assert ">Add New Query<" in response.text
     assert ">Queries<" in response.text
+    assert ">Group BusinessQuery<" in response.text
     assert ">Search<" in response.text
     assert ">Update Data<" in response.text
     assert ">Documentation<" in response.text
     assert 'href="/app/business-query"' in response.text
     assert 'href="/app/business-query/new"' in response.text
     assert 'href="/app/business-query/queries"' in response.text
+    assert 'href="/app/business-query/groups"' in response.text
     assert 'href="/app/search"' in response.text
     assert 'href="/app/update-data"' in response.text
     assert 'href="/app/documentation"' in response.text
@@ -292,7 +294,9 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
         "<a class=\"portal-nav-link portal-subnav-link active\" href=\"/app/business-query/new\" "
         "aria-current=\"page\" >Add New Query</a> "
         "<a class=\"portal-nav-link portal-subnav-link\" href=\"/app/business-query/queries\" "
-        ">Queries</a> </div> </div> <a class=\"portal-nav-link\" href=\"/app/search\" >Search</a> "
+        ">Queries</a> "
+        "<a class=\"portal-nav-link portal-subnav-link\" href=\"/app/business-query/groups\" "
+        ">Group BusinessQuery</a> </div> </div> <a class=\"portal-nav-link\" href=\"/app/search\" >Search</a> "
         "<a class=\"portal-nav-link\" href=\"/app/update-data\" >Update Data</a> "
         "<a class=\"portal-nav-link\" href=\"/app/documentation\" >Documentation</a>"
     ) in normalized_html
@@ -397,18 +401,45 @@ async def test_business_query_queries_renders_saved_query_management(
     assert "<title>Queries - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Queries</h1>' in response.text
     assert "Manage saved BusinessQuery rules for authenticated review." in response.text
-    assert 'aria-label="Create BusinessQuery group"' in response.text
-    assert '<label for="group-name">Group name</label>' in response.text
-    assert '<label for="group-description">Description</label>' in response.text
-    assert "Create group" in response.text
+    assert 'aria-label="Create BusinessQuery group"' not in response.text
+    assert '<label for="group-name">Group name</label>' not in response.text
+    assert '<label for="group-description">Description</label>' not in response.text
+    assert "Create group" not in response.text
     assert "<h2>Saved queries</h2>" in response.text
     assert 'aria-label="Filter saved queries by group"' in response.text
     assert "No saved queries yet." in response.text
-    assert "No groups yet." in response.text
+    assert "No groups yet." not in response.text
     assert '<form class="business-query-form"' not in response.text
     assert ">BusinessQuery<" in response.text
     assert ">Add New Query<" in response.text
     assert ">Queries<" in response.text
+    assert ">Group BusinessQuery<" in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_group_page_renders_group_management(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/business-query/groups")
+
+    assert response.status_code == 200
+    assert "<title>Group BusinessQuery - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Group BusinessQuery</h1>' in response.text
+    assert "Create and review saved-query groups for BusinessQuery." in response.text
+    assert 'aria-label="Create BusinessQuery group"' in response.text
+    assert '<label for="group-name">Group name</label>' in response.text
+    assert '<label for="group-description">Description</label>' in response.text
+    assert "Create group" in response.text
+    assert '<div class="result-panel business-query-group-list" aria-label="BusinessQuery groups">' in response.text
+    assert "<h2>Groups</h2>" in response.text
+    assert "No groups yet." in response.text
+    assert "<h2>Saved queries</h2>" not in response.text
 
 
 @pytest.mark.asyncio
@@ -954,7 +985,11 @@ async def test_authenticated_user_can_create_business_query_group(
 
     assert response.status_code == 200
     assert "Group created." in response.text
-    assert ">Quarterly reviews</option>" in response.text
+    assert '<h1 id="app-title">Group BusinessQuery</h1>' in response.text
+    assert "<h2>Groups</h2>" in response.text
+    assert "<td>Quarterly reviews</td>" in response.text
+    assert "<td>Model portfolio rules</td>" in response.text
+    assert "<h2>Saved queries</h2>" not in response.text
     async with session_factory() as session:
         group = await session.scalar(select(BQGROUP))
 
@@ -985,6 +1020,7 @@ async def test_business_query_group_duplicate_name_for_same_user_shows_validatio
     )
 
     assert response.status_code == 200
+    assert '<h1 id="app-title">Group BusinessQuery</h1>' in response.text
     assert "A group with this name already exists." in response.text
     assert "IntegrityError" not in response.text
     assert "UNIQUE constraint" not in response.text
@@ -1016,6 +1052,8 @@ async def test_business_query_group_allows_same_name_for_different_users(
 
     assert response.status_code == 200
     assert "Group created." in response.text
+    assert '<h1 id="app-title">Group BusinessQuery</h1>' in response.text
+    assert "<td>Quarterly reviews</td>" in response.text
     async with session_factory() as session:
         groups = (await session.scalars(select(BQGROUP).order_by(BQGROUP.owner_username))).all()
 

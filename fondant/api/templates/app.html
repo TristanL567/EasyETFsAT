@@ -483,43 +483,6 @@
               </div>
             </form>
             {% elif section_key == "business-query-queries" %}
-            <form
-              class="business-query-group-form"
-              method="post"
-              action="/app/business-query/groups"
-              aria-label="Create BusinessQuery group"
-              novalidate
-            >
-              <h2>Create group</h2>
-              <label for="group-name">Group name</label>
-              <input
-                id="group-name"
-                name="group_name"
-                type="text"
-                autocomplete="off"
-                placeholder="Quarterly reviews"
-                value="{{ business_query_group_form.group_name }}"
-                {% if business_query_group_errors.group_name %}aria-invalid="true" aria-describedby="group-name-error"{% endif %}
-              >
-              {% if business_query_group_errors.group_name %}
-              <p class="field-error" id="group-name-error">{{ business_query_group_errors.group_name }}</p>
-              {% endif %}
-
-              <label for="group-description">Description</label>
-              <textarea
-                id="group-description"
-                name="description"
-                rows="3"
-                placeholder="Optional group description"
-              >{{ business_query_group_form.description }}</textarea>
-
-              {% if business_query_status %}
-              <p class="form-success">{{ business_query_status }}</p>
-              {% endif %}
-
-              <button class="primary-action" type="submit">Create group</button>
-            </form>
-
             <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
               <h2>Saved queries</h2>
               <form class="group-filter-form" method="get" action="/app/business-query/queries" aria-label="Filter saved queries by group">
@@ -533,10 +496,6 @@
                 </select>
                 <button class="secondary-action" type="submit">Apply</button>
               </form>
-              {% if not business_query_group_options %}
-              <p class="empty-state">No groups yet.</p>
-              {% endif %}
-
               {% if grouped_saved_business_queries %}
               {% for query_group in grouped_saved_business_queries %}
               <section class="saved-query-group" aria-labelledby="saved-query-group-{{ query_group.id }}">
@@ -589,6 +548,69 @@
               <p class="empty-state">Selected group has no saved queries.</p>
               {% else %}
               <p class="empty-state">No saved queries yet.</p>
+              {% endif %}
+            </div>
+            {% elif section_key == "business-query-groups" %}
+            <form
+              class="business-query-group-form"
+              method="post"
+              action="/app/business-query/groups"
+              aria-label="Create BusinessQuery group"
+              novalidate
+            >
+              <h2>Create group</h2>
+              <label for="group-name">Group name</label>
+              <input
+                id="group-name"
+                name="group_name"
+                type="text"
+                autocomplete="off"
+                placeholder="Quarterly reviews"
+                value="{{ business_query_group_form.group_name }}"
+                {% if business_query_group_errors.group_name %}aria-invalid="true" aria-describedby="group-name-error"{% endif %}
+              >
+              {% if business_query_group_errors.group_name %}
+              <p class="field-error" id="group-name-error">{{ business_query_group_errors.group_name }}</p>
+              {% endif %}
+
+              <label for="group-description">Description</label>
+              <textarea
+                id="group-description"
+                name="description"
+                rows="3"
+                placeholder="Optional group description"
+              >{{ business_query_group_form.description }}</textarea>
+
+              {% if business_query_status %}
+              <p class="form-success">{{ business_query_status }}</p>
+              {% endif %}
+
+              <button class="primary-action" type="submit">Create group</button>
+            </form>
+
+            <div class="result-panel business-query-group-list" aria-label="BusinessQuery groups">
+              <h2>Groups</h2>
+              {% if business_query_group_options %}
+              <div class="result-table-wrap">
+                <table class="result-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Group name</th>
+                      <th scope="col">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for group in business_query_group_options %}
+                    <tr>
+                      <td>{{ group.group_name }}</td>
+                      <td>{{ group.description or "-" }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="empty-state">No groups yet.</p>
               {% endif %}
             </div>
             {% elif section.label == "Search" %}
