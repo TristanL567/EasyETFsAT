@@ -175,6 +175,8 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/login" in route_paths
     assert "/app" in route_paths
     assert "/app/business-query" in route_paths
+    assert "/app/business-query/new" in route_paths
+    assert "/app/business-query/queries" in route_paths
     assert "/app/business-query/save" in route_paths
     assert "/app/business-query/saved/{saved_query_id}/load" in route_paths
     assert "/app/search" in route_paths
@@ -242,6 +244,8 @@ async def test_app_redirects_unauthenticated_users_to_login(
     for path in [
         "/app",
         "/app/business-query",
+        "/app/business-query/new",
+        "/app/business-query/queries",
         "/app/search",
         "/app/update-data",
         "/app/documentation",
@@ -265,18 +269,26 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
     assert 'aria-label="Primary sections"' in response.text
-    assert response.text.count('class="portal-nav-link') == 4
+    assert response.text.count('class="portal-nav-link') == 6
     assert ">BusinessQuery<" in response.text
+    assert ">Add New Query<" in response.text
+    assert ">Queries<" in response.text
     assert ">Search<" in response.text
     assert ">Update Data<" in response.text
     assert ">Documentation<" in response.text
     assert 'href="/app/business-query"' in response.text
+    assert 'href="/app/business-query/new"' in response.text
+    assert 'href="/app/business-query/queries"' in response.text
     assert 'href="/app/search"' in response.text
     assert 'href="/app/update-data"' in response.text
     assert 'href="/app/documentation"' in response.text
     normalized_html = " ".join(response.text.split())
     assert (
-        ">BusinessQuery</a> <a class=\"portal-nav-link\" href=\"/app/search\" >Search</a> "
+        ">BusinessQuery</a> <div class=\"portal-subnav\" aria-label=\"BusinessQuery pages\"> "
+        "<a class=\"portal-nav-link portal-subnav-link active\" href=\"/app/business-query/new\" "
+        "aria-current=\"page\" >Add New Query</a> "
+        "<a class=\"portal-nav-link portal-subnav-link\" href=\"/app/business-query/queries\" "
+        ">Queries</a> </div> </div> <a class=\"portal-nav-link\" href=\"/app/search\" >Search</a> "
         "<a class=\"portal-nav-link\" href=\"/app/update-data\" >Update Data</a> "
         "<a class=\"portal-nav-link\" href=\"/app/documentation\" >Documentation</a>"
     ) in normalized_html
@@ -296,13 +308,13 @@ async def test_business_query_form_renders_for_authenticated_users(
     )
     assert login_response.status_code == 303
 
-    for path in ["/app", "/app/business-query"]:
+    for path in ["/app", "/app/business-query", "/app/business-query/new"]:
         response = await web_client.get(path)
 
         assert response.status_code == 200
         assert (
             '<form class="business-query-form" method="post" '
-            'action="/app/business-query" aria-label="BusinessQuery setup" novalidate>'
+            'action="/app/business-query/new" aria-label="BusinessQuery setup" novalidate>'
         ) in response.text
         assert '<label for="query-name">Custom query name</label>' in response.text
         assert 'name="query_name"' in response.text
@@ -319,8 +331,8 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert 'name="note"' in response.text
         assert 'formaction="/app/business-query/save"' in response.text
         assert "Save query" in response.text
-        assert "<h2>Saved queries</h2>" in response.text
-        assert "No saved queries yet." in response.text
+        assert "<h2>Saved queries</h2>" not in response.text
+        assert "No saved queries yet." not in response.text
         assert "Submit structured inputs to calculate Austrian ETF tax values." in response.text
         assert "How to read and reuse a query" in response.text
         assert "PA mit Option means private assets with option" in response.text
@@ -361,6 +373,30 @@ async def test_business_query_form_renders_for_authenticated_users(
 
 
 @pytest.mark.asyncio
+async def test_business_query_queries_renders_saved_query_management(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/business-query/queries")
+
+    assert response.status_code == 200
+    assert "<title>Queries - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Queries</h1>' in response.text
+    assert "Manage saved BusinessQuery rules for authenticated review." in response.text
+    assert "<h2>Saved queries</h2>" in response.text
+    assert "No saved queries yet." in response.text
+    assert '<form class="business-query-form"' not in response.text
+    assert ">BusinessQuery<" in response.text
+    assert ">Add New Query<" in response.text
+    assert ">Queries<" in response.text
+
+
+@pytest.mark.asyncio
 async def test_business_query_get_prefills_selected_isin_from_search_link(
     web_client: httpx.AsyncClient,
 ) -> None:
@@ -370,7 +406,7 @@ async def test_business_query_get_prefills_selected_isin_from_search_link(
     )
     assert login_response.status_code == 303
 
-    response = await web_client.get("/app/business-query", params={"isins": "ie00bmtx1y45"})
+    response = await web_client.get("/app/business-query/new", params={"isins": "ie00bmtx1y45"})
 
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
@@ -381,18 +417,19 @@ async def test_business_query_get_prefills_selected_isin_from_search_link(
 async def test_business_query_post_redirects_unauthenticated_users_to_login(
     web_client: httpx.AsyncClient,
 ) -> None:
-    response = await web_client.post(
-        "/app/business-query",
-        data={
-            "query_name": "Monthly review",
-            "isins": "ie00bmtx1y45",
-            "legal_entity_type": "business",
-            "amount": "1000",
-        },
-    )
+    for path in ["/app/business-query", "/app/business-query/new"]:
+        response = await web_client.post(
+            path,
+            data={
+                "query_name": "Monthly review",
+                "isins": "ie00bmtx1y45",
+                "legal_entity_type": "business",
+                "amount": "1000",
+            },
+        )
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/login"
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
 
 
 @pytest.mark.asyncio
@@ -459,11 +496,7 @@ async def test_authenticated_user_can_save_business_query_with_structured_fields
     assert response.status_code == 200
     assert "Saved query created." in response.text
     assert "<h2>Query results</h2>" not in response.text
-    assert "<h2>Saved queries</h2>" in response.text
-    assert "<td>Monthly review</td>" in response.text
-    assert "<td>business</td>" in response.text
-    assert "<td>BV jur. Person</td>" in response.text
-    assert "<td>2025</td>" in response.text
+    assert "<h2>Saved queries</h2>" not in response.text
     assert 'value="Monthly review"' in response.text
     assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
     assert ">Run for model portfolio</textarea>" in response.text
@@ -632,10 +665,13 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
     )
     assert login_response.status_code == 303
 
-    response = await web_client.get("/app/business-query")
+    response = await web_client.get("/app/business-query/queries")
 
     assert response.status_code == 200
+    assert "<title>Queries - EasyETFsAT</title>" in response.text
+    assert '<h1 id="app-title">Queries</h1>' in response.text
     assert "<h2>Saved queries</h2>" in response.text
+    assert '<form class="business-query-form"' not in response.text
     assert "<td>Admin saved rule</td>" in response.text
     assert "<td>business</td>" in response.text
     assert "<td>BV mit Option</td>" in response.text
@@ -681,9 +717,7 @@ async def test_current_user_can_load_saved_business_query_with_structured_fields
     assert '<option value="2025" selected>2025</option>' in response.text
     assert 'value="250.7500000000"' in response.text
     assert ">Stored model portfolio note</textarea>" in response.text
-    assert "<td>Loaded monthly rule</td>" in response.text
-    assert f'action="/app/business-query/saved/{saved_query_id}/load"' in response.text
-    assert "Load</button>" in response.text
+    assert "<h2>Saved queries</h2>" not in response.text
 
 
 @pytest.mark.asyncio
@@ -779,7 +813,7 @@ async def test_another_users_saved_business_query_cannot_be_loaded_or_displayed(
     )
     assert login_response.status_code == 303
 
-    list_response = await web_client.get("/app/business-query")
+    list_response = await web_client.get("/app/business-query/queries")
     assert list_response.status_code == 200
     assert "Other private rule" not in list_response.text
     assert "US0378331005" not in list_response.text
@@ -1633,7 +1667,7 @@ async def test_authenticated_search_with_mocked_data_renders_matching_rows(
     assert "<td>EUR</td>" in response.text
     assert "<td>2024, 2025</td>" in response.text
     assert "<td>3</td>" in response.text
-    assert 'href="/app/business-query?isins=IE00BMTX1Y45"' in response.text
+    assert 'href="/app/business-query/new?isins=IE00BMTX1Y45"' in response.text
     assert len(search_calls) == 1
     assert search_calls[0][1] == "vanguard"
 

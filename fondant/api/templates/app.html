@@ -12,11 +12,30 @@
         <a class="brand" href="/app">EasyETFsAT</a>
         <nav class="portal-nav">
           {% for item in sections %}
+          {% if item.children is defined %}
+          <div class="portal-nav-group">
+            <a
+              class="portal-nav-link portal-nav-parent{% if item.path == section.path or section.nav_parent == item.section_key|default('business-query') %} active{% endif %}"
+              href="{{ item.path }}"
+              {% if item.path == section.path or section.nav_parent == item.section_key|default('business-query') %}aria-current="page"{% endif %}
+            >{{ item.label }}</a>
+            <div class="portal-subnav" aria-label="{{ item.label }} pages">
+              {% for child in item.children %}
+              <a
+                class="portal-nav-link portal-subnav-link{% if child.section_key == section_key %} active{% endif %}"
+                href="{{ child.path }}"
+                {% if child.section_key == section_key %}aria-current="page"{% endif %}
+              >{{ child.label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+          {% else %}
           <a
             class="portal-nav-link{% if item.path == section.path %} active{% endif %}"
             href="{{ item.path }}"
             {% if item.path == section.path %}aria-current="page"{% endif %}
           >{{ item.label }}</a>
+          {% endif %}
           {% endfor %}
         </nav>
       </aside>
@@ -34,14 +53,14 @@
             <p class="eyebrow">Authenticated workspace</p>
             <h1 id="app-title">{{ section.title }}</h1>
             <p class="summary">{{ section.summary }}</p>
-            {% if section.label == "BusinessQuery" %}
+            {% if section_key == "business-query" %}
             <div class="guidance-panel business-query-guidance" aria-label="BusinessQuery guidance">
               <h2>How to read and reuse a query</h2>
               <p>Choose the tax category that matches the investor: PA mit Option means private assets with option, PA ohne Option means private assets without option, BV mit Option means business assets with option, BV ohne Option means business assets without option, BV jur. Person means business assets for a legal person, and Stiftung means foundation assets.</p>
               <p>All available years runs the query without a tax-year filter. The amount multiplies each base tax value, so the calculated value is the tax value scaled to the entered holding amount.</p>
               <p>Saved queries store the rule. Load one later, replace or paste the ISINs you want to review, then rerun the same structured query.</p>
             </div>
-            <form class="business-query-form" method="post" action="/app/business-query" aria-label="BusinessQuery setup" novalidate>
+            <form class="business-query-form" method="post" action="/app/business-query/new" aria-label="BusinessQuery setup" novalidate>
               <p class="form-note">
                 Submit structured inputs to calculate Austrian ETF tax values.
               </p>
@@ -267,6 +286,7 @@
                 Save query
               </button>
             </form>
+            {% elif section_key == "business-query-queries" %}
             <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
               <h2>Saved queries</h2>
               {% if saved_business_queries %}
@@ -351,7 +371,7 @@
                       <td>{{ row.currency if row.currency is not none else "-" }}</td>
                       <td>{{ row.available_tax_years | join(", ") if row.available_tax_years else "-" }}</td>
                       <td>{{ row.report_count }}</td>
-                      <td><a href="/app/business-query?isins={{ row.isin }}">Use ISIN</a></td>
+                      <td><a href="/app/business-query/new?isins={{ row.isin }}">Use ISIN</a></td>
                     </tr>
                     {% endfor %}
                   </tbody>

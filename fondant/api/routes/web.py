@@ -85,24 +85,49 @@ BUSINESS_QUERY_CSV_HEADERS = (
 
 APP_SECTIONS = {
     "business-query": {
+        "section_key": "business-query",
         "label": "BusinessQuery",
         "path": "/app/business-query",
         "title": "BusinessQuery",
         "summary": "Run structured Austrian ETF tax queries for authenticated review.",
+        "children": (
+            {
+                "label": "Add New Query",
+                "path": "/app/business-query/new",
+                "section_key": "business-query",
+            },
+            {
+                "label": "Queries",
+                "path": "/app/business-query/queries",
+                "section_key": "business-query-queries",
+            },
+        ),
+    },
+    "business-query-queries": {
+        "section_key": "business-query-queries",
+        "label": "Queries",
+        "path": "/app/business-query/queries",
+        "title": "Queries",
+        "summary": "Manage saved BusinessQuery rules for authenticated review.",
+        "nav_parent": "business-query",
+        "hide_from_primary_nav": True,
     },
     "search": {
+        "section_key": "search",
         "label": "Search",
         "path": "/app/search",
         "title": "Search",
         "summary": "Discover available fund tax data by ISIN or security name.",
     },
     "update-data": {
+        "section_key": "update-data",
         "label": "Update Data",
         "path": "/app/update-data",
         "title": "Update Data",
         "summary": "Prepare future authenticated fund data refresh workflows.",
     },
     "documentation": {
+        "section_key": "documentation",
         "label": "Documentation",
         "path": "/app/documentation",
         "title": "Documentation",
@@ -482,7 +507,12 @@ def _render_app_shell(
             "page_title": f"{section['title']} - EasyETFsAT",
             "username": username,
             "section": section,
-            "sections": APP_SECTIONS.values(),
+            "section_key": section_key,
+            "sections": tuple(
+                item
+                for item in APP_SECTIONS.values()
+                if not item.get("hide_from_primary_nav")
+            ),
             "legal_entity_types": LEGAL_ENTITY_TYPES,
             "business_query_subcategory_options": BUSINESS_QUERY_SUBCATEGORY_OPTIONS,
             "business_query_subcategory_labels": BUSINESS_QUERY_SUBCATEGORY_LABELS,
@@ -540,8 +570,33 @@ async def app_business_query(
     )
 
 
+@router.get("/app/business-query/new", response_class=HTMLResponse)
+async def app_business_query_new(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    isins: str = "",
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+    return _render_app_shell(
+        request,
+        "business-query",
+        business_query_form=_prefilled_business_query_form(isins),
+        saved_business_queries=await _saved_business_queries(session, username),
+    )
+
+
 @router.post("/app/business-query", response_class=HTMLResponse)
 async def submit_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    return await submit_business_query_new(request, session)
+
+
+@router.post("/app/business-query/new", response_class=HTMLResponse)
+async def submit_business_query_new(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> HTMLResponse:
@@ -564,6 +619,21 @@ async def submit_business_query(
         business_query_form=form_values,
         business_query_errors=errors,
         business_query_result=result,
+        saved_business_queries=await _saved_business_queries(session, username),
+    )
+
+
+@router.get("/app/business-query/queries", response_class=HTMLResponse)
+async def app_business_query_queries(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+    return _render_app_shell(
+        request,
+        "business-query-queries",
         saved_business_queries=await _saved_business_queries(session, username),
     )
 
