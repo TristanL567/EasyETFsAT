@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKeyConstraint, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
@@ -14,15 +14,37 @@ def _isin_list_json_type() -> JSONB | JSON:
     return JSON().with_variant(JSONB, "postgresql")
 
 
+class BQGROUP(IdTimestampMixin, Base):
+    __tablename__ = "BQGROUP"
+    DOMAIN_PREFIX = "BQG"
+    __table_args__ = (
+        UniqueConstraint("BQGUSR", "BQGNAM", name="uq_bqgroup_user_name"),
+        UniqueConstraint("BQGIDN", "BQGUSR", name="uq_bqgroup_id_user"),
+        Index("ix_bqgroup_owner", "BQGUSR"),
+    )
+
+    owner_username: Mapped[str] = mapped_column("BQGUSR", String(255), nullable=False)
+    group_name: Mapped[str] = mapped_column("BQGNAM", String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column("BQGDSC", Text)
+
+
 class BQSAVED(IdTimestampMixin, Base):
     __tablename__ = "BQSAVED"
     DOMAIN_PREFIX = "BQS"
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["BQSGRPIDN", "BQSUSR"],
+            ["BQGROUP.BQGIDN", "BQGROUP.BQGUSR"],
+            name="fk_bqsaved_group_owner",
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint("BQSUSR", "BQSNAM", name="uq_bqsaved_user_name"),
         Index("ix_bqsaved_owner", "BQSUSR"),
+        Index("ix_bqsaved_group", "BQSGRPIDN"),
     )
 
     owner_username: Mapped[str] = mapped_column("BQSUSR", String(255), nullable=False)
+    group_id: Mapped[int | None] = mapped_column("BQSGRPIDN")
     query_name: Mapped[str] = mapped_column("BQSNAM", String(255), nullable=False)
     legal_entity_type: Mapped[str] = mapped_column("BQSLENTYP", String(64), nullable=False)
     subcategory_key: Mapped[str] = mapped_column("BQSSUBCAT", String(64), nullable=False)

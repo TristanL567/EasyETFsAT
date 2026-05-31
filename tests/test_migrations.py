@@ -58,6 +58,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
         "IMPLOG",
         "IMPERR",
         "INGJOB",
+        "BQGROUP",
         "BQSAVED",
     }
     existing_tables = set(inspector.get_table_names())
@@ -98,12 +99,29 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert ingjob_columns["JOBSTS"]["nullable"] is False
     ingjob_indexes = {index["name"]: index for index in inspector.get_indexes("INGJOB")}
     assert ingjob_indexes["ix_ingjob_isin_status"]["column_names"] == ["JOBISN", "JOBSTS"]
+    bqgroup_columns = {column["name"]: column for column in inspector.get_columns("BQGROUP")}
+    assert {
+        "BQGIDN",
+        "BQGCRTDTS",
+        "BQGUPDDTS",
+        "BQGUSR",
+        "BQGNAM",
+        "BQGDSC",
+    }.issubset(bqgroup_columns)
+    assert bqgroup_columns["BQGUSR"]["nullable"] is False
+    assert bqgroup_columns["BQGNAM"]["nullable"] is False
+    assert bqgroup_columns["BQGDSC"]["nullable"] is True
+    bqgroup_constraints = {constraint["name"]: constraint for constraint in inspector.get_unique_constraints("BQGROUP")}
+    assert bqgroup_constraints["uq_bqgroup_user_name"]["column_names"] == ["BQGUSR", "BQGNAM"]
+    bqgroup_indexes = {index["name"]: index for index in inspector.get_indexes("BQGROUP")}
+    assert bqgroup_indexes["ix_bqgroup_owner"]["column_names"] == ["BQGUSR"]
     bqsaved_columns = {column["name"]: column for column in inspector.get_columns("BQSAVED")}
     assert {
         "BQSIDN",
         "BQSCRTDTS",
         "BQSUPDDTS",
         "BQSUSR",
+        "BQSGRPIDN",
         "BQSNAM",
         "BQSLENTYP",
         "BQSSUBCAT",
@@ -113,6 +131,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
         "BQSISNS",
     }.issubset(bqsaved_columns)
     assert bqsaved_columns["BQSUSR"]["nullable"] is False
+    assert bqsaved_columns["BQSGRPIDN"]["nullable"] is True
     assert bqsaved_columns["BQSNAM"]["nullable"] is False
     assert bqsaved_columns["BQSLENTYP"]["nullable"] is False
     assert bqsaved_columns["BQSSUBCAT"]["nullable"] is False
@@ -124,6 +143,11 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert bqsaved_constraints["uq_bqsaved_user_name"]["column_names"] == ["BQSUSR", "BQSNAM"]
     bqsaved_indexes = {index["name"]: index for index in inspector.get_indexes("BQSAVED")}
     assert bqsaved_indexes["ix_bqsaved_owner"]["column_names"] == ["BQSUSR"]
+    assert bqsaved_indexes["ix_bqsaved_group"]["column_names"] == ["BQSGRPIDN"]
+    bqsaved_foreign_keys = {foreign_key["name"]: foreign_key for foreign_key in inspector.get_foreign_keys("BQSAVED")}
+    assert bqsaved_foreign_keys["fk_bqsaved_group_owner"]["constrained_columns"] == ["BQSGRPIDN", "BQSUSR"]
+    assert bqsaved_foreign_keys["fk_bqsaved_group_owner"]["referred_table"] == "BQGROUP"
+    assert bqsaved_foreign_keys["fk_bqsaved_group_owner"]["referred_columns"] == ["BQGIDN", "BQGUSR"]
     sourceage_columns = {column["name"] for column in inspector.get_columns("SOURCEAGE")}
     assert {"SRCK40PVM", "SRCK40STF", "SRCK62PVM", "SRCK62STF"}.issubset(sourceage_columns)
     refexc_columns = {column["name"] for column in inspector.get_columns("REFEXC")}
@@ -165,7 +189,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
 
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260530_0015"
+    assert revision == "20260531_0016"
     engine.dispose()
 
 

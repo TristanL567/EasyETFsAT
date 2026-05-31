@@ -7,13 +7,25 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from fondant.db.models import ALL_AVAILABLE_YEARS, BQSAVED
+from fondant.db.models import ALL_AVAILABLE_YEARS, BQGROUP, BQSAVED
 
 
 def _create_bqsaved_session() -> Session:
     engine = create_engine("sqlite:///:memory:", future=True)
+    BQGROUP.__table__.create(engine)
     BQSAVED.__table__.create(engine)
     return Session(engine)
+
+
+def test_saved_business_query_group_model_exposes_required_columns() -> None:
+    columns = BQGROUP.__table__.columns
+
+    assert "BQGIDN" in columns
+    assert "BQGCRTDTS" in columns
+    assert "BQGUPDDTS" in columns
+    assert BQGROUP.owner_username.property.columns[0].name == "BQGUSR"
+    assert BQGROUP.group_name.property.columns[0].name == "BQGNAM"
+    assert BQGROUP.description.property.columns[0].name == "BQGDSC"
 
 
 def test_saved_business_query_model_exposes_required_columns() -> None:
@@ -23,6 +35,7 @@ def test_saved_business_query_model_exposes_required_columns() -> None:
     assert "BQSCRTDTS" in columns
     assert "BQSUPDDTS" in columns
     assert BQSAVED.owner_username.property.columns[0].name == "BQSUSR"
+    assert BQSAVED.group_id.property.columns[0].name == "BQSGRPIDN"
     assert BQSAVED.query_name.property.columns[0].name == "BQSNAM"
     assert BQSAVED.legal_entity_type.property.columns[0].name == "BQSLENTYP"
     assert BQSAVED.subcategory_key.property.columns[0].name == "BQSSUBCAT"
@@ -71,6 +84,22 @@ def test_saved_business_query_unique_name_is_scoped_to_owner() -> None:
             session.commit()
 
 
+def test_saved_business_query_group_unique_name_is_scoped_to_owner() -> None:
+    with _create_bqsaved_session() as session:
+        session.add_all(
+            [
+                BQGROUP(owner_username="alice", group_name="Quarterly review"),
+                BQGROUP(owner_username="bob", group_name="Quarterly review"),
+            ]
+        )
+        session.commit()
+
+        session.add(BQGROUP(owner_username="alice", group_name="Quarterly review"))
+
+        with pytest.raises(IntegrityError):
+            session.commit()
+
+
 def test_saved_business_query_optional_fields_accept_null_and_structured_isins() -> None:
     with _create_bqsaved_session() as session:
         no_optional_values = BQSAVED(
@@ -100,3 +129,45 @@ def test_saved_business_query_optional_fields_accept_null_and_structured_isins()
         assert no_optional_values.default_isins is None
         assert with_default_isins.note == "Run for model portfolio"
         assert with_default_isins.default_isins == ["AT0000A0ETF1", "AT0000A0ETF2"]
+
+
+def test_saved_business_query_can_be_created_without_group() -> None:
+    with _create_bqsaved_session() as session:
+        saved_query = BQSAVED(
+            owner_username="alice",
+            group_id=None,
+            query_name="No group",
+            legal_entity_type="natural person",
+            subcategory_key="natural_person_all",
+            tax_year_filter=ALL_AVAILABLE_YEARS,
+            amount=Decimal("100.00"),
+        )
+        session.add(saved_query)
+        session.commit()
+
+        assert saved_query.group_id is None
+
+
+def test_saved_business_query_can_reference_group() -> None:
+    with _create_bqsaved_session() as session:
+        group = BQGROUP(
+            owner_username="alice",
+            group_name="Quarterly review",
+            description="Recurring client review",
+        )
+        session.add(group)
+        session.flush()
+
+        saved_query = BQSAVED(
+            owner_username="alice",
+            group_id=group.id,
+            query_name="With group",
+            legal_entity_type="business",
+            subcategory_key="business_all",
+            tax_year_filter="2025",
+            amount=Decimal("250.00"),
+        )
+        session.add(saved_query)
+        session.commit()
+
+        assert saved_query.group_id == group.id
