@@ -134,6 +134,13 @@ class BusinessQueryResultRow:
 class BusinessQueryResult:
     query: BusinessQueryInput
     rows: tuple[BusinessQueryResultRow, ...] = field(default_factory=tuple)
+    missing_year_isins: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def missing_year_messages(self) -> tuple[str, ...]:
+        return tuple(
+            f"Data for ISIN {isin} is not available for the selected year." for isin in self.missing_year_isins
+        )
 
     @property
     def count(self) -> int:
@@ -202,7 +209,11 @@ async def execute_business_query(
                 column_name = f"{field_code}{suffix}"
                 rows.append(_result_row_from_mapping(validated, source_row, field_code, suffix, column_name))
 
-    return BusinessQueryResult(query=validated, rows=tuple(rows))
+    return BusinessQueryResult(
+        query=validated,
+        rows=tuple(rows),
+        missing_year_isins=_missing_year_isins(validated, source_rows),
+    )
 
 
 def _build_business_query_statement(
@@ -376,6 +387,19 @@ def _selected_amount_column_names(
 
 def _amount_currency_column_names(column_base: str) -> tuple[str, str]:
     return f"{column_base}_HOMCCY", f"{column_base}_EUR"
+
+
+def _missing_year_isins(
+    query: BusinessQueryInput,
+    source_rows: list[sa.RowMapping],
+) -> tuple[str, ...]:
+    if query.year is None:
+        return ()
+
+    isins_with_selected_year = {
+        str(source_row["TAXISN"]).upper() for source_row in source_rows if source_row["TAXYEA"] == query.year
+    }
+    return tuple(isin for isin in query.isins if isin not in isins_with_selected_year)
 
 
 def _result_row_from_mapping(

@@ -371,6 +371,7 @@ async def test_business_query_all_available_years_preserves_unfiltered_year_beha
     assert '"TAXYEA" BETWEEN' not in compiled_sql
     assert result.query.tax_year_filter == ALL_AVAILABLE_YEARS
     assert {row.tax_year for row in result.rows} == {2024, 2025}
+    assert result.missing_year_isins == ()
 
 
 @pytest.mark.asyncio
@@ -394,6 +395,99 @@ async def test_business_query_specific_tax_year_filter_adds_year_predicate() -> 
     assert '"TAXYEA" = 2024' in compiled_sql
     assert result.query.tax_year_filter == "2024"
     assert result.query.year == 2024
+    assert result.missing_year_isins == ()
+
+
+@pytest.mark.asyncio
+async def test_business_query_specific_tax_year_reports_one_missing_isin() -> None:
+    session = _FakeSession([_view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2025)])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="One missing",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            tax_year_filter=2025,
+        ),
+    )
+
+    assert result.count == 2
+    assert {row.isin for row in result.rows} == {"IE00BMTX1Y45"}
+    assert result.missing_year_isins == ("LU1681044993",)
+    assert result.missing_year_messages == (
+        "Data for ISIN LU1681044993 is not available for the selected year.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_business_query_specific_tax_year_reports_all_missing_isins() -> None:
+    session = _FakeSession([])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="All missing",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            tax_year_filter=2025,
+        ),
+    )
+
+    assert result.count == 0
+    assert result.is_empty is True
+    assert result.missing_year_isins == ("IE00BMTX1Y45", "LU1681044993")
+
+
+@pytest.mark.asyncio
+async def test_business_query_specific_tax_year_reports_no_missing_isins_when_all_have_data() -> None:
+    session = _FakeSession(
+        [
+            _view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2025),
+            _view_row(TAXISN="LU1681044993", TAXYEA=2025),
+        ]
+    )
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="None missing",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="business",
+            amount_multiplier=Decimal("2"),
+            tax_fields=("K61",),
+            subcategory_key="business_bv_with_option",
+            tax_year_filter=2025,
+        ),
+    )
+
+    assert result.count == 2
+    assert {row.isin for row in result.rows} == {"IE00BMTX1Y45", "LU1681044993"}
+    assert result.missing_year_isins == ()
+
+
+@pytest.mark.asyncio
+async def test_business_query_all_available_years_does_not_report_missing_selected_year_data() -> None:
+    session = _FakeSession([_view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2024)])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="All years availability",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            tax_year_filter=ALL_AVAILABLE_YEARS,
+        ),
+    )
+
+    assert result.count == 2
+    assert result.missing_year_isins == ()
 
 
 @pytest.mark.parametrize("tax_year_filter", ["all", "202X", "1899", "3001"])
@@ -437,6 +531,7 @@ async def test_business_query_multiplies_amount_with_subcategory_and_tax_year_fi
     assert result.rows[0].legal_entity_category == "BVO"
     assert result.rows[0].base_eur_value == Decimal("40.0000000000")
     assert result.rows[0].calculated_eur_value == Decimal("100.00000000000")
+    assert result.missing_year_isins == ()
 
 
 @pytest.mark.asyncio
@@ -457,6 +552,7 @@ async def test_business_query_empty_result_set_is_structured() -> None:
     assert result.count == 0
     assert result.is_empty is True
     assert result.rows == ()
+    assert result.missing_year_isins == ()
 
 
 @pytest.mark.parametrize(
