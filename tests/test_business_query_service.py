@@ -58,6 +58,12 @@ def _view_row(**overrides: Any) -> dict[str, Any]:
         "K40BVO": Decimal("40.0000000000"),
         "K40BVJ": Decimal("50.0000000000"),
         "K40STI": Decimal("60.0000000000"),
+        "K11PVM": Decimal("100.0000000000"),
+        "K11PVO": Decimal("200.0000000000"),
+        "K11BVM": Decimal("300.0000000000"),
+        "K11BVO": Decimal("400.0000000000"),
+        "K11BVJ": Decimal("500.0000000000"),
+        "K11STI": Decimal("600.0000000000"),
         "K61PVM": Decimal("1.0000000000"),
         "K61PVO": Decimal("2.0000000000"),
         "K61BVM": Decimal("3.0000000000"),
@@ -125,6 +131,37 @@ async def test_business_query_executes_only_v2_taxdathomccy_with_parameterized_f
 
 
 @pytest.mark.asyncio
+async def test_business_query_default_tax_fields_remain_legacy_fields() -> None:
+    session = _FakeSession([_view_row()])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Default fields",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+        ),
+    )
+
+    assert session.statement is not None
+    compiled_sql = _compiled_sql(session.statement)
+    assert result.query.tax_fields == ("K40", "K61", "K62")
+    assert [(row.tax_field_code, row.legal_entity_category) for row in result.rows] == [
+        ("K40", "PVM"),
+        ("K40", "PVO"),
+        ("K61", "PVM"),
+        ("K61", "PVO"),
+        ("K62", "PVM"),
+        ("K62", "PVO"),
+    ]
+    assert '"K40PVM_HOMCCY"' in compiled_sql
+    assert '"K61PVM_HOMCCY"' in compiled_sql
+    assert '"K62PVM_HOMCCY"' in compiled_sql
+    assert '"K11PVM_HOMCCY"' not in compiled_sql
+
+
+@pytest.mark.asyncio
 async def test_business_query_maps_natural_person_suffixes_and_multiplies_amount() -> None:
     session = _FakeSession([_view_row()])
 
@@ -152,6 +189,41 @@ async def test_business_query_maps_natural_person_suffixes_and_multiplies_amount
     assert result.rows[0].calculated_home_currency_value == Decimal("15.00000000000")
     assert result.rows[1].base_eur_value == Decimal("20.0000000000")
     assert result.rows[1].calculated_eur_value == Decimal("30.00000000000")
+
+
+@pytest.mark.asyncio
+async def test_business_query_selects_multiple_active_registry_tax_fields() -> None:
+    session = _FakeSession([_view_row()])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Selected fields",
+            isins=("IE00BMTX1Y45",),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("2"),
+            tax_fields=("k11", "K61", "K11"),
+            subcategory_key="natural_person_pa_with_option",
+        ),
+    )
+
+    assert session.statement is not None
+    compiled_sql = _compiled_sql(session.statement)
+    assert result.query.tax_fields == ("K11", "K61")
+    assert [(row.tax_field_code, row.legal_entity_category) for row in result.rows] == [
+        ("K11", "PVM"),
+        ("K61", "PVM"),
+    ]
+    assert result.rows[0].base_home_currency_value == Decimal("100.0000000000")
+    assert result.rows[0].calculated_home_currency_value == Decimal("200.0000000000")
+    assert result.rows[1].base_eur_value == Decimal("1.0000000000")
+    assert result.rows[1].calculated_eur_value == Decimal("2.0000000000")
+    assert '"K11PVM_HOMCCY"' in compiled_sql
+    assert '"K11PVM_EUR"' in compiled_sql
+    assert '"K61PVM_HOMCCY"' in compiled_sql
+    assert '"K61PVM_EUR"' in compiled_sql
+    assert '"K40PVM_HOMCCY"' not in compiled_sql
+    assert '"K62PVM_HOMCCY"' not in compiled_sql
 
 
 @pytest.mark.asyncio

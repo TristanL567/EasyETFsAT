@@ -10,6 +10,8 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fondant.tax_registry import TAX_LINES
+
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 ALL_AVAILABLE_YEARS = "all_available_years"
 
@@ -54,7 +56,7 @@ DEFAULT_SUBCATEGORY_KEYS = MappingProxyType(
     }
 )
 
-TAX_FIELD_LABELS = MappingProxyType(
+TAX_FIELD_LABEL_OVERRIDES = MappingProxyType(
     {
         "K40": "Taxable income",
         "K61": "Cost-basis adjustment",
@@ -62,7 +64,11 @@ TAX_FIELD_LABELS = MappingProxyType(
     }
 )
 
-DEFAULT_TAX_FIELDS = tuple(TAX_FIELD_LABELS)
+TAX_FIELD_LABELS = MappingProxyType(
+    {tax_line.line_code: TAX_FIELD_LABEL_OVERRIDES.get(tax_line.line_code, tax_line.description) for tax_line in TAX_LINES}
+)
+
+DEFAULT_TAX_FIELDS = ("K40", "K61", "K62")
 
 IDENTITY_COLUMNS = ("TAXISN", "TAXOKBIDN", "TAXYEA", "FNDCCY", "TAXMDT", "FXRAT")
 AMOUNT_COLUMN_BASES = tuple(
