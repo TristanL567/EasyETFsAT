@@ -73,9 +73,14 @@ BUSINESS_QUERY_CSV_HEADERS = (
     "tax_field_code",
     "tax_field_label",
     "legal_entity_category",
+    "original_home_currency",
+    "base_home_currency_value",
+    "calculated_home_currency_value",
     "base_eur_value",
     "amount_multiplier",
     "calculated_eur_value",
+    "fx_rate",
+    "fx_date",
 )
 
 APP_SECTIONS = {
@@ -267,9 +272,16 @@ def _business_query_result_to_csv(result: BusinessQueryResult) -> str:
                 "tax_field_code": row.tax_field_code,
                 "tax_field_label": row.tax_field_label,
                 "legal_entity_category": row.legal_entity_category,
+                "original_home_currency": (
+                    row.home_currency_code or row.original_currency_code or row.fund_currency
+                ),
+                "base_home_currency_value": row.base_home_currency_value,
+                "calculated_home_currency_value": row.calculated_home_currency_value,
                 "base_eur_value": row.base_eur_value,
                 "amount_multiplier": row.amount_multiplier,
                 "calculated_eur_value": row.calculated_eur_value,
+                "fx_rate": row.fx_rate,
+                "fx_date": row.fx_date or row.report_date,
             }
         )
     return output.getvalue()

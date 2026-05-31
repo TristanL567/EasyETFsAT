@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import csv
 import logging
 from collections.abc import AsyncIterator
 from datetime import date, datetime
 from decimal import Decimal
+from io import StringIO
 from pathlib import Path
 
 import httpx
@@ -1192,6 +1194,11 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
                     base_eur_value=Decimal("10.0000000000"),
                     amount_multiplier=Decimal("1000.50"),
                     calculated_eur_value=Decimal("10005.000000000000"),
+                    original_currency_code="CHF",
+                    home_currency_code="CHF",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=Decimal("10.9000000000"),
+                    calculated_home_currency_value=Decimal("10905.450000000000"),
                 ),
             ),
         )
@@ -1218,12 +1225,41 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
-    assert response.text == (
-        "query_name,isin,tax_year,tax_field_code,tax_field_label,"
-        "legal_entity_category,base_eur_value,amount_multiplier,calculated_eur_value\n"
-        "Monthly review,IE00BMTX1Y45,2025,K40,Taxable income,BVM,"
-        "10.0000000000,1000.50,10005.000000000000\n"
-    )
+    csv_rows = list(csv.DictReader(StringIO(response.text)))
+    assert csv_rows == [
+        {
+            "query_name": "Monthly review",
+            "isin": "IE00BMTX1Y45",
+            "tax_year": "2025",
+            "tax_field_code": "K40",
+            "tax_field_label": "Taxable income",
+            "legal_entity_category": "BVM",
+            "original_home_currency": "CHF",
+            "base_home_currency_value": "10.9000000000",
+            "calculated_home_currency_value": "10905.450000000000",
+            "base_eur_value": "10.0000000000",
+            "amount_multiplier": "1000.50",
+            "calculated_eur_value": "10005.000000000000",
+            "fx_rate": "1.0000000000",
+            "fx_date": "2025-06-15",
+        }
+    ]
+    assert csv_rows[0].keys() == {
+        "query_name",
+        "isin",
+        "tax_year",
+        "tax_field_code",
+        "tax_field_label",
+        "legal_entity_category",
+        "original_home_currency",
+        "base_home_currency_value",
+        "calculated_home_currency_value",
+        "base_eur_value",
+        "amount_multiplier",
+        "calculated_eur_value",
+        "fx_rate",
+        "fx_date",
+    }
     assert 'filename="business-query.csv"' in response.headers["content-disposition"]
     assert len(service_calls) == 1
     query = service_calls[0][1]
@@ -1289,6 +1325,12 @@ async def test_business_query_export_uses_current_submitted_fields_after_saved_q
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
+    assert response.text == (
+        "query_name,isin,tax_year,tax_field_code,tax_field_label,"
+        "legal_entity_category,original_home_currency,base_home_currency_value,"
+        "calculated_home_currency_value,base_eur_value,amount_multiplier,"
+        "calculated_eur_value,fx_rate,fx_date\n"
+    )
     assert len(service_calls) == 1
     query = service_calls[0][1]
     assert query.query_name == "Current export rule"
@@ -1335,7 +1377,9 @@ async def test_business_query_empty_export_returns_csv_headers_only(
     assert response.headers["content-type"].startswith("text/csv")
     assert response.text == (
         "query_name,isin,tax_year,tax_field_code,tax_field_label,"
-        "legal_entity_category,base_eur_value,amount_multiplier,calculated_eur_value\n"
+        "legal_entity_category,original_home_currency,base_home_currency_value,"
+        "calculated_home_currency_value,base_eur_value,amount_multiplier,"
+        "calculated_eur_value,fx_rate,fx_date\n"
     )
     assert len(service_calls) == 1
 
