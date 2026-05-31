@@ -563,6 +563,47 @@ async def test_authenticated_user_can_save_business_query_with_structured_fields
     assert saved_query.amount == Decimal("250.7500000000")
     assert saved_query.note == "Run for model portfolio"
     assert saved_query.default_isins == ["IE00BMTX1Y45", "LU1681044993"]
+    assert saved_query.selected_tax_fields == ["K40", "K61", "K62"]
+
+
+@pytest.mark.asyncio
+async def test_authenticated_user_can_save_business_query_with_selected_tax_fields(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/save",
+        content=urlencode(
+            [
+                ("query_name", "Selected fields rule"),
+                ("isins", "IE00BMTX1Y45"),
+                ("legal_entity_type", "natural person"),
+                ("subcategory_key", "natural_person_pa_with_option"),
+                ("tax_year_filter", "2025"),
+                ("tax_fields_present", "1"),
+                ("tax_fields", "K11"),
+                ("tax_fields", "K61"),
+                ("amount", "100"),
+                ("note", "Field-specific saved rule"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "Saved query created." in response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED))
+
+    assert saved_query is not None
+    assert saved_query.selected_tax_fields == ["K11", "K61"]
 
 
 @pytest.mark.asyncio
@@ -598,6 +639,7 @@ async def test_business_query_save_allows_optional_default_isins(
     assert saved_query is not None
     assert saved_query.default_isins is None
     assert saved_query.note is None
+    assert saved_query.selected_tax_fields == ["K40", "K61", "K62"]
 
 
 @pytest.mark.asyncio
@@ -998,6 +1040,7 @@ async def test_current_user_can_load_saved_business_query_with_structured_fields
             amount=Decimal("250.75"),
             note="Stored model portfolio note",
             default_isins=["IE00BMTX1Y45", "LU1681044993"],
+            selected_tax_fields=["K11", "K61"],
         )
         session.add(saved_query)
         await session.commit()
@@ -1020,6 +1063,10 @@ async def test_current_user_can_load_saved_business_query_with_structured_fields
     assert '<option value="2025" selected>2025</option>' in response.text
     assert 'value="250.7500000000"' in response.text
     assert ">Stored model portfolio note</textarea>" in response.text
+    normalized_html = " ".join(response.text.split())
+    assert '<input id="tax-field-K11" name="tax_fields" type="checkbox" value="K11" checked >' in normalized_html
+    assert '<input id="tax-field-K61" name="tax_fields" type="checkbox" value="K61" checked >' in normalized_html
+    assert '<input id="tax-field-K40" name="tax_fields" type="checkbox" value="K40" >' in normalized_html
     assert "<h2>Saved queries</h2>" not in response.text
 
 
@@ -1039,6 +1086,7 @@ async def test_loaded_saved_business_query_can_replace_isins_and_rerun_existing_
             amount=Decimal("1000.50"),
             note="Rerun note",
             default_isins=["IE00BMTX1Y45"],
+            selected_tax_fields=["K11"],
         )
         session.add(saved_query)
         await session.commit()
@@ -1066,15 +1114,20 @@ async def test_loaded_saved_business_query_can_replace_isins_and_rerun_existing_
 
     rerun_response = await web_client.post(
         "/app/business-query",
-        data={
-            "query_name": "Rerun saved rule",
-            "isins": "LU1681044993",
-            "legal_entity_type": "business",
-            "subcategory_key": "business_bv_without_option",
-            "tax_year_filter": "2025",
-            "amount": "1000.5000000000",
-            "note": "Rerun note",
-        },
+        content=urlencode(
+            [
+                ("query_name", "Rerun saved rule"),
+                ("isins", "LU1681044993"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_without_option"),
+                ("tax_year_filter", "2025"),
+                ("tax_fields_present", "1"),
+                ("tax_fields", "K11"),
+                ("amount", "1000.5000000000"),
+                ("note", "Rerun note"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
     )
 
     assert rerun_response.status_code == 200
@@ -1087,6 +1140,7 @@ async def test_loaded_saved_business_query_can_replace_isins_and_rerun_existing_
     assert query.legal_entity_type == "business"
     assert query.subcategory_key == "business_bv_without_option"
     assert query.tax_year_filter == "2025"
+    assert query.tax_fields == ("K11",)
     assert query.amount_multiplier == Decimal("1000.5000000000")
 
 
@@ -1185,6 +1239,7 @@ async def test_saved_business_query_edit_form_prefills_all_saved_fields(
             amount=Decimal("250.75"),
             note="Stored edit note",
             default_isins=["IE00BMTX1Y45", "LU1681044993"],
+            selected_tax_fields=["K11", "K62"],
         )
         session.add(saved_query)
         await session.commit()
@@ -1208,6 +1263,10 @@ async def test_saved_business_query_edit_form_prefills_all_saved_fields(
     assert 'value="250.7500000000"' in response.text
     assert ">Stored edit note</textarea>" in response.text
     assert f'<option value="{owned_group_id}" selected>Quarterly reviews</option>' in response.text
+    normalized_html = " ".join(response.text.split())
+    assert '<input id="edit-tax-field-K11" name="tax_fields" type="checkbox" value="K11" checked >' in normalized_html
+    assert '<input id="edit-tax-field-K62" name="tax_fields" type="checkbox" value="K62" checked >' in normalized_html
+    assert '<input id="edit-tax-field-K40" name="tax_fields" type="checkbox" value="K40" >' in normalized_html
     assert "Other user group" not in response.text
 
 
@@ -1239,16 +1298,22 @@ async def test_owner_can_update_saved_business_query_fields(
 
     response = await web_client.post(
         f"/app/business-query/queries/{saved_query_id}/edit",
-        data={
-            "query_name": " Updated edit rule ",
-            "isins": "lu1681044993 us0378331005",
-            "legal_entity_type": "business",
-            "subcategory_key": "business_bv_without_option",
-            "tax_year_filter": "2025",
-            "amount": "777.25",
-            "note": " Updated note ",
-            "group_id": "",
-        },
+        content=urlencode(
+            [
+                ("query_name", " Updated edit rule "),
+                ("isins", "lu1681044993 us0378331005"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_without_option"),
+                ("tax_year_filter", "2025"),
+                ("tax_fields_present", "1"),
+                ("tax_fields", "K11"),
+                ("tax_fields", "K62"),
+                ("amount", "777.25"),
+                ("note", " Updated note "),
+                ("group_id", ""),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
     )
 
     assert response.status_code == 200
@@ -1267,6 +1332,7 @@ async def test_owner_can_update_saved_business_query_fields(
     assert saved_query.amount == Decimal("777.2500000000")
     assert saved_query.note == "Updated note"
     assert saved_query.default_isins == ["LU1681044993", "US0378331005"]
+    assert saved_query.selected_tax_fields == ["K11", "K62"]
 
 
 @pytest.mark.asyncio
@@ -2209,6 +2275,7 @@ async def test_business_query_export_uses_current_submitted_fields_after_saved_q
             tax_year_filter="2025",
             amount=Decimal("100.00"),
             default_isins=["IE00BMTX1Y45"],
+            selected_tax_fields=["K40"],
         )
         session.add(saved_query)
         await session.commit()
@@ -2233,17 +2300,25 @@ async def test_business_query_export_uses_current_submitted_fields_after_saved_q
 
     load_response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
     assert load_response.status_code == 200
+    normalized_load_html = " ".join(load_response.text.split())
+    assert '<input id="tax-field-K40" name="tax_fields" type="checkbox" value="K40" checked >' in normalized_load_html
 
     response = await web_client.post(
         "/app/business-query/export",
-        data={
-            "query_name": "Current export rule",
-            "isins": "LU1681044993",
-            "legal_entity_type": "natural person",
-            "subcategory_key": "natural_person_pa_without_option",
-            "tax_year_filter": "all_available_years",
-            "amount": "777.25",
-        },
+        content=urlencode(
+            [
+                ("query_name", "Current export rule"),
+                ("isins", "LU1681044993"),
+                ("legal_entity_type", "natural person"),
+                ("subcategory_key", "natural_person_pa_without_option"),
+                ("tax_year_filter", "all_available_years"),
+                ("tax_fields_present", "1"),
+                ("tax_fields", "K11"),
+                ("tax_fields", "K61"),
+                ("amount", "777.25"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
     )
 
     assert response.status_code == 200
@@ -2261,6 +2336,7 @@ async def test_business_query_export_uses_current_submitted_fields_after_saved_q
     assert query.legal_entity_type == "natural person"
     assert query.subcategory_key == "natural_person_pa_without_option"
     assert query.tax_year_filter == "all_available_years"
+    assert query.tax_fields == ("K11", "K61")
     assert query.amount_multiplier == Decimal("777.25")
 
 

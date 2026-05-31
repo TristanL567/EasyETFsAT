@@ -162,7 +162,7 @@ def _empty_business_query_form() -> dict[str, object]:
     }
 
 
-def _prefilled_business_query_form(isins: str) -> dict[str, str]:
+def _prefilled_business_query_form(isins: str) -> dict[str, object]:
     form = _empty_business_query_form()
     normalized_isins = _normalize_isin_input(isins)
     if normalized_isins:
@@ -294,6 +294,7 @@ def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, obj
             "legal_entity_type": saved_query.legal_entity_type,
             "subcategory_key": saved_query.subcategory_key,
             "tax_year_filter": saved_query.tax_year_filter,
+            "tax_fields": tuple(saved_query.selected_tax_fields or BUSINESS_QUERY_DEFAULT_TAX_FIELDS),
             "amount": str(saved_query.amount),
             "note": saved_query.note or "",
             "group_id": str(saved_query.group_id or ""),
@@ -997,6 +998,7 @@ async def edit_business_query(
         saved_query.legal_entity_type = str(preview["legal_entity_type"])
         saved_query.subcategory_key = str(preview["subcategory_key"])
         saved_query.tax_year_filter = str(preview["tax_year_filter"])
+        saved_query.selected_tax_fields = list(cast(tuple[str, ...], preview["tax_fields"]))
         saved_query.amount = Decimal(str(preview["amount"]))
         saved_query.note = str(preview["note"]) or None
         saved_query.default_isins = cast(list[str], preview["isins"]) or None
@@ -1041,6 +1043,7 @@ async def save_business_query(
             legal_entity_type=str(preview["legal_entity_type"]),
             subcategory_key=str(preview["subcategory_key"]),
             tax_year_filter=str(preview["tax_year_filter"]),
+            selected_tax_fields=list(cast(tuple[str, ...], preview["tax_fields"])),
             amount=Decimal(str(preview["amount"])),
             note=str(preview["note"]) or None,
             default_isins=cast(list[str], preview["isins"]) or None,

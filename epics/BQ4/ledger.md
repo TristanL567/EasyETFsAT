@@ -10,3 +10,5 @@
 | 2026-05-31T22:16:02+02:00 | BQ4-004 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web/service tests, ruff, diff check. | null |
 | 2026-05-31T22:16:47+02:00 | BQ4-005 | dispatched | automatic_dispatch | BQ4-005 is not a human checkpoint; dispatching saved-query tax field persistence ticket after BQ4-004 commit ac56fcf. | ac56fcf |
 | 2026-05-31T22:20:51+02:00 | BQ4-005 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: migration/model tests, alembic heads 20260531_0018, ruff, diff check. | null |
+| 2026-05-31T22:21:39+02:00 | BQ4-006 | dispatched | automatic_dispatch | BQ4-006 is not a human checkpoint; dispatching saved-query selected-field route wiring after BQ4-005 commit 0065fc4. | 0065fc4 |
+| 2026-05-31T22:27:52+02:00 | BQ4-006 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web/model/service tests, ruff, diff check. | null |
