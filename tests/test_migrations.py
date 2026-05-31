@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 
 from alembic import command
 from fondant.config import get_settings
-from fondant.tax_registry import TAX_CATEGORIES
+from fondant.tax_registry import TAX_CATEGORIES, TAX_LINES
 
 
 @contextmanager
@@ -172,6 +172,12 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert {"TAXMDT", "FXRAT", "K61PVM", "K62PVM", "K40PVM"}.issubset(view2_cols)
 
     homccy_view_cols = {column["name"] for column in inspector.get_columns("V2_TAXDATHOMCCY")}
+    expanded_tax_columns = {
+        f"{line.line_code}{category.view_alias}_{currency_suffix}"
+        for line in TAX_LINES
+        for category in TAX_CATEGORIES
+        for currency_suffix in ("HOMCCY", "EUR")
+    }
     assert {
         "TAXISN",
         "TAXOKBIDN",
@@ -186,10 +192,21 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
         "K61BVM_EUR",
         "K62STI_EUR",
     }.issubset(homccy_view_cols)
+    assert expanded_tax_columns.issubset(homccy_view_cols)
+    assert {
+        "K11PVM_HOMCCY",
+        "K11BVO_EUR",
+        "K40PVM_HOMCCY",
+        "K40PVM_EUR",
+        "K61BVM_HOMCCY",
+        "K61BVM_EUR",
+        "K62STI_HOMCCY",
+        "K62STI_EUR",
+    }.issubset(homccy_view_cols)
 
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260531_0016"
+    assert revision == "20260531_0017"
     engine.dispose()
 
 
