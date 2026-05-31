@@ -338,12 +338,22 @@ def _format_optional_timestamp(value: object) -> str:
 async def _saved_business_queries(
     session: AsyncSession,
     username: str,
+    *,
+    selected_group_id: str = "",
 ) -> tuple[dict[str, str], ...]:
+    query = select(BQSAVED).where(BQSAVED.owner_username == username)
+    if selected_group_id == "ungrouped":
+        query = query.where(BQSAVED.group_id.is_(None))
+    elif selected_group_id:
+        try:
+            group_id = int(selected_group_id)
+        except ValueError:
+            group_id = 0
+        query = query.where(BQSAVED.group_id == group_id)
+
     saved_queries = (
         await session.scalars(
-            select(BQSAVED)
-            .where(BQSAVED.owner_username == username)
-            .order_by(BQSAVED.updated_at.desc(), BQSAVED.id.desc())
+            query.order_by(BQSAVED.updated_at.desc(), BQSAVED.id.desc())
         )
     ).all()
     group_names = await _business_query_group_names(session, username)
@@ -361,6 +371,7 @@ async def _saved_business_queries(
                 saved_query.tax_year_filter
             ),
             "amount": str(saved_query.amount),
+            "group_id": str(saved_query.group_id or ""),
             "group_name": group_names.get(saved_query.group_id or 0, "Ungrouped"),
             "updated_at": _format_optional_timestamp(saved_query.updated_at),
         }
@@ -390,7 +401,92 @@ async def _business_query_group_options(
             .order_by(BQGROUP.group_name.asc(), BQGROUP.id.asc())
         )
     ).all()
-    return tuple({"id": str(group.id), "group_name": group.group_name} for group in groups)
+    return tuple(
+        {
+            "id": str(group.id),
+            "group_name": group.group_name,
+            "description": group.description or "",
+        }
+        for group in groups
+    )
+
+
+def _group_saved_business_queries(
+    saved_queries: tuple[dict[str, str], ...],
+    group_options: tuple[dict[str, str], ...],
+    selected_group_id: str,
+) -> tuple[dict[str, object], ...]:
+    if selected_group_id == "ungrouped":
+        return (
+            {
+                "id": "ungrouped",
+                "group_name": "Ungrouped",
+                "description": "",
+                "queries": saved_queries,
+            },
+        )
+
+    if selected_group_id:
+        group = next(
+            (option for option in group_options if option["id"] == selected_group_id),
+            None,
+        )
+        if group is None:
+            return ()
+        return (
+            {
+                "id": group["id"],
+                "group_name": group["group_name"],
+                "description": group["description"],
+                "queries": saved_queries,
+            },
+        )
+
+    grouped_queries: list[dict[str, object]] = []
+    for group in group_options:
+        group_queries = tuple(
+            saved_query
+            for saved_query in saved_queries
+            if saved_query["group_id"] == group["id"]
+        )
+        if group_queries:
+            grouped_queries.append(
+                {
+                    "id": group["id"],
+                    "group_name": group["group_name"],
+                    "description": group["description"],
+                    "queries": group_queries,
+                }
+            )
+
+    ungrouped_queries = tuple(
+        saved_query for saved_query in saved_queries if not saved_query["group_id"]
+    )
+    if ungrouped_queries:
+        grouped_queries.append(
+            {
+                "id": "ungrouped",
+                "group_name": "Ungrouped",
+                "description": "",
+                "queries": ungrouped_queries,
+            }
+        )
+
+    return tuple(grouped_queries)
+
+
+def _business_query_group_form_values(form: Any) -> dict[str, str]:
+    return {
+        "group_name": str(form.get("group_name", "")),
+        "description": str(form.get("description", "")),
+    }
+
+
+def _validate_business_query_group_form(form_values: dict[str, str]) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    if not form_values["group_name"].strip():
+        errors["group_name"] = "Enter a group name."
+    return errors
 
 
 async def _saved_business_query_for_owner(
@@ -561,6 +657,10 @@ def _render_app_shell(
     business_query_result: BusinessQueryResult | None = None,
     saved_business_queries: tuple[dict[str, str], ...] = (),
     business_query_group_options: tuple[dict[str, str], ...] = (),
+    grouped_saved_business_queries: tuple[dict[str, object], ...] = (),
+    selected_business_query_group_id: str = "",
+    business_query_group_form: dict[str, str] | None = None,
+    business_query_group_errors: dict[str, str] | None = None,
     edit_saved_query_id: int | None = None,
     search_query: str = "",
     search_results: tuple[FundSearchResult, ...] = (),
@@ -601,6 +701,11 @@ def _render_app_shell(
             "business_query_result": business_query_result,
             "saved_business_queries": saved_business_queries,
             "business_query_group_options": business_query_group_options,
+            "grouped_saved_business_queries": grouped_saved_business_queries,
+            "selected_business_query_group_id": selected_business_query_group_id,
+            "business_query_group_form": business_query_group_form
+            or {"group_name": "", "description": ""},
+            "business_query_group_errors": business_query_group_errors or {},
             "edit_saved_query_id": edit_saved_query_id,
             "search_query": search_query,
             "search_results": search_results,
@@ -705,14 +810,87 @@ async def submit_business_query_new(
 async def app_business_query_queries(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
+    group_id: str = "",
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
         return RedirectResponse(url="/login", status_code=303)
+    group_options = await _business_query_group_options(session, username)
+    selected_group_id = group_id.strip()
+    if selected_group_id and selected_group_id != "ungrouped":
+        selected_group_id = (
+            selected_group_id
+            if any(group["id"] == selected_group_id for group in group_options)
+            else ""
+        )
+    saved_queries = await _saved_business_queries(
+        session,
+        username,
+        selected_group_id=selected_group_id,
+    )
     return _render_app_shell(
         request,
         "business-query-queries",
-        saved_business_queries=await _saved_business_queries(session, username),
+        saved_business_queries=saved_queries,
+        business_query_group_options=group_options,
+        grouped_saved_business_queries=_group_saved_business_queries(
+            saved_queries,
+            group_options,
+            selected_group_id,
+        ),
+        selected_business_query_group_id=selected_group_id,
+    )
+
+
+@router.post("/app/business-query/groups", response_class=HTMLResponse)
+async def create_business_query_group(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    group_form = _business_query_group_form_values(form)
+    errors = _validate_business_query_group_form(group_form)
+    status = ""
+    if not errors:
+        group_form = {
+            "group_name": group_form["group_name"].strip(),
+            "description": group_form["description"].strip(),
+        }
+        session.add(
+            BQGROUP(
+                owner_username=username,
+                group_name=group_form["group_name"],
+                description=group_form["description"] or None,
+            )
+        )
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            errors["group_name"] = "A group with this name already exists."
+        else:
+            status = "Group created."
+            group_form = {"group_name": "", "description": ""}
+
+    group_options = await _business_query_group_options(session, username)
+    saved_queries = await _saved_business_queries(session, username)
+    return _render_app_shell(
+        request,
+        "business-query-queries",
+        business_query_status=status,
+        saved_business_queries=saved_queries,
+        business_query_group_options=group_options,
+        grouped_saved_business_queries=_group_saved_business_queries(
+            saved_queries,
+            group_options,
+            "",
+        ),
+        business_query_group_form=group_form,
+        business_query_group_errors=errors,
     )
 
 

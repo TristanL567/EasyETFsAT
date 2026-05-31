@@ -422,46 +422,110 @@
               </div>
             </form>
             {% elif section_key == "business-query-queries" %}
+            <form
+              class="business-query-group-form"
+              method="post"
+              action="/app/business-query/groups"
+              aria-label="Create BusinessQuery group"
+              novalidate
+            >
+              <h2>Create group</h2>
+              <label for="group-name">Group name</label>
+              <input
+                id="group-name"
+                name="group_name"
+                type="text"
+                autocomplete="off"
+                placeholder="Quarterly reviews"
+                value="{{ business_query_group_form.group_name }}"
+                {% if business_query_group_errors.group_name %}aria-invalid="true" aria-describedby="group-name-error"{% endif %}
+              >
+              {% if business_query_group_errors.group_name %}
+              <p class="field-error" id="group-name-error">{{ business_query_group_errors.group_name }}</p>
+              {% endif %}
+
+              <label for="group-description">Description</label>
+              <textarea
+                id="group-description"
+                name="description"
+                rows="3"
+                placeholder="Optional group description"
+              >{{ business_query_group_form.description }}</textarea>
+
+              {% if business_query_status %}
+              <p class="form-success">{{ business_query_status }}</p>
+              {% endif %}
+
+              <button class="primary-action" type="submit">Create group</button>
+            </form>
+
             <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
               <h2>Saved queries</h2>
-              {% if saved_business_queries %}
-              <div class="result-table-wrap">
-                <table class="result-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Query name</th>
-                      <th scope="col">Legal entity type</th>
-                      <th scope="col">Subcategory</th>
-                      <th scope="col">Tax year</th>
-                      <th scope="col">Amount</th>
-                      <th scope="col">Group</th>
-                      <th scope="col">Updated</th>
-                      <th scope="col">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for saved_query in saved_business_queries %}
-                    <tr>
-                      <td>{{ saved_query.query_name }}</td>
-                      <td>{{ saved_query.legal_entity_type }}</td>
-                      <td>{{ saved_query.subcategory_label }}</td>
-                      <td>{{ saved_query.tax_year_filter }}</td>
-                      <td>{{ saved_query.amount }}</td>
-                      <td>{{ saved_query.group_name }}</td>
-                      <td>{{ saved_query.updated_at }}</td>
-                      <td>
-                        <div class="table-actions">
-                          <form method="get" action="/app/business-query/saved/{{ saved_query.id }}/load">
-                            <button class="secondary-action" type="submit">Load</button>
-                          </form>
-                          <a class="secondary-action" href="/app/business-query/queries/{{ saved_query.id }}/edit">Edit</a>
-                        </div>
-                      </td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
+              <form class="group-filter-form" method="get" action="/app/business-query/queries" aria-label="Filter saved queries by group">
+                <label for="saved-query-group-filter">Group</label>
+                <select id="saved-query-group-filter" name="group_id">
+                  <option value=""{% if not selected_business_query_group_id %} selected{% endif %}>All groups</option>
+                  <option value="ungrouped"{% if selected_business_query_group_id == "ungrouped" %} selected{% endif %}>Ungrouped</option>
+                  {% for group in business_query_group_options %}
+                  <option value="{{ group.id }}"{% if selected_business_query_group_id == group.id %} selected{% endif %}>{{ group.group_name }}</option>
+                  {% endfor %}
+                </select>
+                <button class="secondary-action" type="submit">Apply</button>
+              </form>
+              {% if not business_query_group_options %}
+              <p class="empty-state">No groups yet.</p>
+              {% endif %}
+
+              {% if grouped_saved_business_queries %}
+              {% for query_group in grouped_saved_business_queries %}
+              <section class="saved-query-group" aria-labelledby="saved-query-group-{{ query_group.id }}">
+                <h3 id="saved-query-group-{{ query_group.id }}">{{ query_group.group_name }}</h3>
+                {% if query_group.description %}
+                <p class="group-description">{{ query_group.description }}</p>
+                {% endif %}
+                {% if query_group.queries %}
+                <div class="result-table-wrap">
+                  <table class="result-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Query name</th>
+                        <th scope="col">Legal entity type</th>
+                        <th scope="col">Subcategory</th>
+                        <th scope="col">Tax year</th>
+                        <th scope="col">Amount</th>
+                        <th scope="col">Updated</th>
+                        <th scope="col">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for saved_query in query_group.queries %}
+                      <tr>
+                        <td>{{ saved_query.query_name }}</td>
+                        <td>{{ saved_query.legal_entity_type }}</td>
+                        <td>{{ saved_query.subcategory_label }}</td>
+                        <td>{{ saved_query.tax_year_filter }}</td>
+                        <td>{{ saved_query.amount }}</td>
+                        <td>{{ saved_query.updated_at }}</td>
+                        <td>
+                          <div class="table-actions">
+                            <form method="get" action="/app/business-query/saved/{{ saved_query.id }}/load">
+                              <button class="secondary-action" type="submit">Load</button>
+                            </form>
+                            <a class="secondary-action" href="/app/business-query/queries/{{ saved_query.id }}/edit">Edit</a>
+                          </div>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                {% elif selected_business_query_group_id %}
+                <p class="empty-state">Selected group has no saved queries.</p>
+                {% endif %}
+              </section>
+              {% endfor %}
+              {% elif selected_business_query_group_id %}
+              <p class="empty-state">Selected group has no saved queries.</p>
               {% else %}
               <p class="empty-state">No saved queries yet.</p>
               {% endif %}

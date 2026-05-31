@@ -178,6 +178,7 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/app/business-query/new" in route_paths
     assert "/app/business-query/queries" in route_paths
     assert "/app/business-query/queries/{saved_query_id}/edit" in route_paths
+    assert "/app/business-query/groups" in route_paths
     assert "/app/business-query/save" in route_paths
     assert "/app/business-query/saved/{saved_query_id}/load" in route_paths
     assert "/app/search" in route_paths
@@ -390,8 +391,14 @@ async def test_business_query_queries_renders_saved_query_management(
     assert "<title>Queries - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Queries</h1>' in response.text
     assert "Manage saved BusinessQuery rules for authenticated review." in response.text
+    assert 'aria-label="Create BusinessQuery group"' in response.text
+    assert '<label for="group-name">Group name</label>' in response.text
+    assert '<label for="group-description">Description</label>' in response.text
+    assert "Create group" in response.text
     assert "<h2>Saved queries</h2>" in response.text
+    assert 'aria-label="Filter saved queries by group"' in response.text
     assert "No saved queries yet." in response.text
+    assert "No groups yet." in response.text
     assert '<form class="business-query-form"' not in response.text
     assert ">BusinessQuery<" in response.text
     assert ">Add New Query<" in response.text
@@ -491,6 +498,19 @@ async def test_business_query_edit_redirects_unauthenticated_users_to_login(
     )
     assert post_response.status_code == 303
     assert post_response.headers["location"] == "/login"
+
+
+@pytest.mark.asyncio
+async def test_business_query_group_create_redirects_unauthenticated_users_to_login(
+    web_client: httpx.AsyncClient,
+) -> None:
+    response = await web_client.post(
+        "/app/business-query/groups",
+        data={"group_name": "Quarterly reviews", "description": "Quarterly rules"},
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
 
 
 @pytest.mark.asyncio
@@ -700,11 +720,261 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
     assert "<td>business</td>" in response.text
     assert "<td>BV mit Option</td>" in response.text
     assert "<td>2025</td>" in response.text
-    assert "<td>Ungrouped</td>" in response.text
+    assert '<h3 id="saved-query-group-ungrouped">Ungrouped</h3>' in response.text
     assert "/app/business-query/queries/" in response.text
     assert ">Edit</a>" in response.text
     assert "Other user rule" not in response.text
     assert "other-user" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_queries_groups_saved_queries_by_group(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        group = BQGROUP(
+            owner_username="admin",
+            group_name="Quarterly reviews",
+            description="Quarterly model rules",
+        )
+        session.add(group)
+        await session.flush()
+        session.add_all(
+            [
+                BQSAVED(
+                    owner_username="admin",
+                    group_id=group.id,
+                    query_name="Grouped rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_all",
+                    tax_year_filter="2025",
+                    amount=Decimal("100.00"),
+                ),
+                BQSAVED(
+                    owner_username="admin",
+                    query_name="Loose rule",
+                    legal_entity_type="natural person",
+                    subcategory_key="natural_person_all",
+                    tax_year_filter="all_available_years",
+                    amount=Decimal("200.00"),
+                ),
+            ]
+        )
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/business-query/queries")
+
+    assert response.status_code == 200
+    assert ">Quarterly reviews</h3>" in response.text
+    assert "Quarterly model rules" in response.text
+    assert '<h3 id="saved-query-group-ungrouped">Ungrouped</h3>' in response.text
+    assert response.text.index(">Quarterly reviews</h3>") < response.text.index(
+        "<td>Grouped rule</td>"
+    )
+    assert response.text.index('<h3 id="saved-query-group-ungrouped">Ungrouped</h3>') < (
+        response.text.index("<td>Loose rule</td>")
+    )
+
+
+@pytest.mark.asyncio
+async def test_business_query_group_filter_limits_saved_queries_to_owned_group(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        shown_group = BQGROUP(owner_username="admin", group_name="Shown group")
+        hidden_group = BQGROUP(owner_username="admin", group_name="Hidden group")
+        other_user_group = BQGROUP(owner_username="other-user", group_name="Other group")
+        session.add_all([shown_group, hidden_group, other_user_group])
+        await session.flush()
+        session.add_all(
+            [
+                BQSAVED(
+                    owner_username="admin",
+                    group_id=shown_group.id,
+                    query_name="Shown rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_all",
+                    tax_year_filter="2025",
+                    amount=Decimal("100.00"),
+                ),
+                BQSAVED(
+                    owner_username="admin",
+                    group_id=hidden_group.id,
+                    query_name="Hidden rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_all",
+                    tax_year_filter="2025",
+                    amount=Decimal("200.00"),
+                ),
+                BQSAVED(
+                    owner_username="other-user",
+                    group_id=other_user_group.id,
+                    query_name="Other user rule",
+                    legal_entity_type="business",
+                    subcategory_key="business_all",
+                    tax_year_filter="2025",
+                    amount=Decimal("300.00"),
+                ),
+            ]
+        )
+        await session.commit()
+        shown_group_id = shown_group.id
+        other_user_group_id = other_user_group.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    filtered_response = await web_client.get(
+        "/app/business-query/queries",
+        params={"group_id": str(shown_group_id)},
+    )
+
+    assert filtered_response.status_code == 200
+    assert ">Shown group</h3>" in filtered_response.text
+    assert "<td>Shown rule</td>" in filtered_response.text
+    assert "Hidden rule" not in filtered_response.text
+    assert "Other user rule" not in filtered_response.text
+    assert "Other group" not in filtered_response.text
+
+    other_filter_response = await web_client.get(
+        "/app/business-query/queries",
+        params={"group_id": str(other_user_group_id)},
+    )
+
+    assert other_filter_response.status_code == 200
+    assert "Other user rule" not in other_filter_response.text
+    assert "Other group" not in other_filter_response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_group_filter_shows_selected_group_empty_state(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        group = BQGROUP(owner_username="admin", group_name="Empty group")
+        session.add(group)
+        await session.commit()
+        group_id = group.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get(
+        "/app/business-query/queries",
+        params={"group_id": str(group_id)},
+    )
+
+    assert response.status_code == 200
+    assert ">Empty group</h3>" in response.text
+    assert "Selected group has no saved queries." in response.text
+    assert "No saved queries yet." not in response.text
+
+
+@pytest.mark.asyncio
+async def test_authenticated_user_can_create_business_query_group(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/groups",
+        data={
+            "group_name": " Quarterly reviews ",
+            "description": " Model portfolio rules ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Group created." in response.text
+    assert ">Quarterly reviews</option>" in response.text
+    async with session_factory() as session:
+        group = await session.scalar(select(BQGROUP))
+
+    assert group is not None
+    assert group.owner_username == "admin"
+    assert group.group_name == "Quarterly reviews"
+    assert group.description == "Model portfolio rules"
+
+
+@pytest.mark.asyncio
+async def test_business_query_group_duplicate_name_for_same_user_shows_validation_error(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        session.add(BQGROUP(owner_username="admin", group_name="Quarterly reviews"))
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/groups",
+        data={"group_name": "Quarterly reviews", "description": ""},
+    )
+
+    assert response.status_code == 200
+    assert "A group with this name already exists." in response.text
+    assert "IntegrityError" not in response.text
+    assert "UNIQUE constraint" not in response.text
+    async with session_factory() as session:
+        groups = (await session.scalars(select(BQGROUP))).all()
+
+    assert len(groups) == 1
+
+
+@pytest.mark.asyncio
+async def test_business_query_group_allows_same_name_for_different_users(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        session.add(BQGROUP(owner_username="other-user", group_name="Quarterly reviews"))
+        await session.commit()
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/groups",
+        data={"group_name": "Quarterly reviews", "description": ""},
+    )
+
+    assert response.status_code == 200
+    assert "Group created." in response.text
+    async with session_factory() as session:
+        groups = (await session.scalars(select(BQGROUP).order_by(BQGROUP.owner_username))).all()
+
+    assert [(group.owner_username, group.group_name) for group in groups] == [
+        ("admin", "Quarterly reviews"),
+        ("other-user", "Quarterly reviews"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -1255,7 +1525,8 @@ async def test_saved_business_query_listing_reflects_edited_values(
     assert "<td>BV ohne Option</td>" in list_response.text
     assert "<td>2025</td>" in list_response.text
     assert "<td>300.5000000000</td>" in list_response.text
-    assert "<td>Edited group</td>" in list_response.text
+    assert '<h3 id="saved-query-group-' in list_response.text
+    assert ">Edited group</h3>" in list_response.text
     assert "Before list edit" not in list_response.text
 
 

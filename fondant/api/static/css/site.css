@@ -208,6 +208,7 @@ h1 {
 }
 
 .business-query-form,
+.business-query-group-form,
 .search-form,
 .update-data-form {
   display: grid;
@@ -225,6 +226,7 @@ h1 {
 }
 
 .business-query-form label,
+.business-query-group-form label,
 .search-form label,
 .update-data-form label {
   font-weight: 700;
@@ -233,6 +235,8 @@ h1 {
 .business-query-form input,
 .business-query-form textarea,
 .business-query-form select,
+.business-query-group-form input,
+.business-query-group-form textarea,
 .search-form input,
 .update-data-form textarea {
   width: 100%;
@@ -247,14 +251,21 @@ h1 {
 }
 
 .business-query-form [aria-invalid="true"],
+.business-query-group-form [aria-invalid="true"],
 .search-form [aria-invalid="true"],
 .update-data-form [aria-invalid="true"] {
   border-color: #8a1f11;
 }
 
 .business-query-form textarea,
+.business-query-group-form textarea,
 .update-data-form textarea {
   resize: vertical;
+}
+
+.business-query-group-form h2 {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .update-data-form textarea:disabled {
@@ -358,6 +369,45 @@ h1 {
 .result-panel h2 {
   margin: 0;
   font-size: 1rem;
+}
+
+.group-filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.group-filter-form label {
+  display: grid;
+  gap: 0.25rem;
+  font-weight: 700;
+}
+
+.group-filter-form select {
+  min-height: 2.75rem;
+  min-width: 14rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+  font: inherit;
+}
+
+.saved-query-group {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.saved-query-group h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.group-description {
+  margin: -0.25rem 0 0;
+  color: var(--muted);
 }
 
 .result-panel dl {
@@ -668,6 +718,9 @@ h1 {
 .business-query-form input:focus-visible,
 .business-query-form textarea:focus-visible,
 .business-query-form select:focus-visible,
+.business-query-group-form input:focus-visible,
+.business-query-group-form textarea:focus-visible,
+.group-filter-form select:focus-visible,
 .search-form input:focus-visible,
 .update-data-form textarea:focus-visible {
   outline: 3px solid #f0b429;
@@ -763,8 +816,18 @@ h1 {
   }
 
   .form-actions,
-  .table-actions {
+  .table-actions,
+  .group-filter-form {
     align-items: stretch;
+  }
+
+  .group-filter-form {
+    display: grid;
+  }
+
+  .group-filter-form select {
+    min-width: 0;
+    width: 100%;
   }
 
   .portal-topbar form {
