@@ -8,3 +8,5 @@
 | 2026-05-31T20:45:26+02:00 | BQ4-003 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: service/tax registry tests, ruff, diff check. | null |
 | 2026-05-31T21:59:08+02:00 | BQ4-004 | dispatched | human_approved_dispatch | Human instructed the planner to continue implementing the remaining epic tickets through AEGIS; dispatching UI tax field selector ticket to master-agent. | 89224a0 |
 | 2026-05-31T22:16:02+02:00 | BQ4-004 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web/service tests, ruff, diff check. | null |
+| 2026-05-31T22:16:47+02:00 | BQ4-005 | dispatched | automatic_dispatch | BQ4-005 is not a human checkpoint; dispatching saved-query tax field persistence ticket after BQ4-004 commit ac56fcf. | ac56fcf |
+| 2026-05-31T22:20:51+02:00 | BQ4-005 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: migration/model tests, alembic heads 20260531_0018, ruff, diff check. | null |

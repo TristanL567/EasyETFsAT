@@ -43,6 +43,7 @@ def test_saved_business_query_model_exposes_required_columns() -> None:
     assert BQSAVED.amount.property.columns[0].name == "BQSAMT"
     assert BQSAVED.note.property.columns[0].name == "BQSNOTE"
     assert BQSAVED.default_isins.property.columns[0].name == "BQSISNS"
+    assert BQSAVED.selected_tax_fields.property.columns[0].name == "BQSTXFLDS"
 
 
 def test_saved_business_query_unique_name_is_scoped_to_owner() -> None:
@@ -100,7 +101,7 @@ def test_saved_business_query_group_unique_name_is_scoped_to_owner() -> None:
             session.commit()
 
 
-def test_saved_business_query_optional_fields_accept_null_and_structured_isins() -> None:
+def test_saved_business_query_optional_fields_accept_null_and_structured_lists() -> None:
     with _create_bqsaved_session() as session:
         no_optional_values = BQSAVED(
             owner_username="alice",
@@ -111,8 +112,9 @@ def test_saved_business_query_optional_fields_accept_null_and_structured_isins()
             amount=Decimal("100.00"),
             note=None,
             default_isins=None,
+            selected_tax_fields=None,
         )
-        with_default_isins = BQSAVED(
+        with_structured_lists = BQSAVED(
             owner_username="alice",
             query_name="With defaults",
             legal_entity_type="business",
@@ -121,14 +123,34 @@ def test_saved_business_query_optional_fields_accept_null_and_structured_isins()
             amount=Decimal("250.00"),
             note="Run for model portfolio",
             default_isins=["AT0000A0ETF1", "AT0000A0ETF2"],
+            selected_tax_fields=["K11", "K61"],
         )
-        session.add_all([no_optional_values, with_default_isins])
+        session.add_all([no_optional_values, with_structured_lists])
         session.commit()
 
         assert no_optional_values.note is None
         assert no_optional_values.default_isins is None
-        assert with_default_isins.note == "Run for model portfolio"
-        assert with_default_isins.default_isins == ["AT0000A0ETF1", "AT0000A0ETF2"]
+        assert no_optional_values.selected_tax_fields is None
+        assert with_structured_lists.note == "Run for model portfolio"
+        assert with_structured_lists.default_isins == ["AT0000A0ETF1", "AT0000A0ETF2"]
+        assert with_structured_lists.selected_tax_fields == ["K11", "K61"]
+
+
+def test_saved_business_query_can_store_single_selected_tax_field() -> None:
+    with _create_bqsaved_session() as session:
+        saved_query = BQSAVED(
+            owner_username="alice",
+            query_name="Single field",
+            legal_entity_type="natural person",
+            subcategory_key="natural_person_all",
+            tax_year_filter=ALL_AVAILABLE_YEARS,
+            amount=Decimal("100.00"),
+            selected_tax_fields=["K40"],
+        )
+        session.add(saved_query)
+        session.commit()
+
+        assert saved_query.selected_tax_fields == ["K40"]
 
 
 def test_saved_business_query_can_be_created_without_group() -> None:

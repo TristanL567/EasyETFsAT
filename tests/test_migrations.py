@@ -129,6 +129,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
         "BQSAMT",
         "BQSNOTE",
         "BQSISNS",
+        "BQSTXFLDS",
     }.issubset(bqsaved_columns)
     assert bqsaved_columns["BQSUSR"]["nullable"] is False
     assert bqsaved_columns["BQSGRPIDN"]["nullable"] is True
@@ -139,6 +140,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert bqsaved_columns["BQSAMT"]["nullable"] is False
     assert bqsaved_columns["BQSNOTE"]["nullable"] is True
     assert bqsaved_columns["BQSISNS"]["nullable"] is True
+    assert bqsaved_columns["BQSTXFLDS"]["nullable"] is True
     bqsaved_constraints = {constraint["name"]: constraint for constraint in inspector.get_unique_constraints("BQSAVED")}
     assert bqsaved_constraints["uq_bqsaved_user_name"]["column_names"] == ["BQSUSR", "BQSNAM"]
     bqsaved_indexes = {index["name"]: index for index in inspector.get_indexes("BQSAVED")}
@@ -206,7 +208,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
 
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260531_0017"
+    assert revision == "20260531_0018"
     engine.dispose()
 
 
