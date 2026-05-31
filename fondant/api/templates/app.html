@@ -693,14 +693,17 @@
             {% else %}
             <div class="placeholder-panel">
               <h2>BusinessQuery reference</h2>
-              <p>BusinessQuery queries V2_TAXDATEUR only.</p>
               <p>PA mit Option means private assets with option; PA ohne Option means private assets without option. BV mit Option means business assets with option; BV ohne Option means business assets without option; BV jur. Person means business assets for a legal person. Stiftung means foundation assets.</p>
               <p>Legal entity mappings: natural person uses PVM and PVO; business uses BVM, BVO, and BVJ; Stiftung uses STI.</p>
               <p>Supported tax fields are K40, K61, and K62.</p>
-              <p>All available years runs across every tax year available to BusinessQuery instead of filtering to one year.</p>
-              <p>The base value is the EUR value from the tax data before applying your entered amount. The calculated value is the base value multiplied by the amount multiplier.</p>
-              <p>To reuse a saved query, save a rule, load it later, replace or paste ISINs, and rerun the query.</p>
-              <p>CSV exports include the query name, ISIN, tax year, tax field, legal entity category, base EUR value, amount multiplier, and calculated EUR value.</p>
+              <p>Original/home currency is the currency of the fund or source tax data. EUR is the converted reporting value.</p>
+              <p>The FX rate and FX date show the conversion used to trace each original/home currency value into EUR.</p>
+              <p>Choose a specific tax year to filter results to that year. Choose All available years to query every available tax year.</p>
+              <p>If an ISIN has no data for the selected year, BusinessQuery shows: Data for ISIN {ISIN} is not available for the selected year.</p>
+              <p>The base value is the tax value before applying your entered amount. The calculated value is the base value multiplied by the amount multiplier.</p>
+              <p>Use Add New Query to enter ISINs, run a query, and save a reusable rule. Use Queries to load, edit, and group saved queries.</p>
+              <p>After loading a saved query, replace or paste the ISINs you want to review, then rerun the query.</p>
+              <p>CSV exports include the query name, ISIN, tax year, tax field, legal entity category, original/home currency values, EUR values, amount multiplier, FX rate, and FX date.</p>
               <p>Search helps find available fund tax data by ISIN or fund/security name, then sends a selected ISIN into BusinessQuery.</p>
               <h2>Tax field reference</h2>
               <p>Descriptions are based on OeKB tax field documentation.</p>

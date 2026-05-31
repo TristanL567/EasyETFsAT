@@ -2872,7 +2872,6 @@ async def test_documentation_page_renders_authenticated_help_content(
     assert "<title>Documentation - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Documentation</h1>' in response.text
     assert "Quick reference for authenticated BusinessQuery and Search use." in response.text
-    assert "BusinessQuery queries V2_TAXDATEUR only." in response.text
     assert "K40" in response.text
     assert "K61" in response.text
     assert "K62" in response.text
@@ -2896,15 +2895,31 @@ async def test_documentation_page_renders_authenticated_help_content(
     assert "BV jur. Person means business assets for a legal person" in response.text
     assert "Stiftung means foundation assets" in response.text
     assert (
-        "All available years runs across every tax year available to BusinessQuery"
+        "Original/home currency is the currency of the fund or source tax data."
+        in response.text
+    )
+    assert "EUR is the converted reporting value." in response.text
+    assert (
+        "The FX rate and FX date show the conversion used to trace each "
+        "original/home currency value into EUR."
+        in response.text
+    )
+    assert "Choose a specific tax year to filter results to that year." in response.text
+    assert (
+        "Choose All available years to query every available tax year."
         in response.text
     )
     assert (
-        "save a rule, load it later, replace or paste ISINs, and rerun the query"
+        "Data for ISIN {ISIN} is not available for the selected year."
         in response.text
     )
+    assert "Use Add New Query to enter ISINs, run a query, and save" in response.text
+    assert "Use Queries to load, edit, and group saved queries." in response.text
+    assert "replace or paste the ISINs you want to review, then rerun" in response.text
     assert "amount multiplier" in response.text
     assert "CSV exports include" in response.text
+    assert "original/home currency values, EUR values" in response.text
+    assert "FX rate, and FX date" in response.text
     assert "Search helps find available fund tax data" in response.text
 
 
