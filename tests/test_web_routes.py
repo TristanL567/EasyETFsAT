@@ -7,6 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 import pytest
@@ -328,6 +329,11 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert 'name="subcategory_key"' in response.text
         assert '<label for="tax-year-filter">Tax year</label>' in response.text
         assert 'name="tax_year_filter"' in response.text
+        assert "<legend>Tax fields</legend>" in response.text
+        for tax_line in TAX_LINES:
+            assert f'id="tax-field-{tax_line.line_code}"' in response.text
+            assert f'value="{tax_line.line_code}"' in response.text
+            assert f"{tax_line.line_code} - {tax_line.name_de}" in response.text
         assert '<label for="amount">Amount</label>' in response.text
         assert 'name="amount"' in response.text
         assert '<label for="query-note">Note</label>' in response.text
@@ -1639,7 +1645,59 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert query.legal_entity_type == "business"
     assert query.subcategory_key == "business_bv_without_option"
     assert query.tax_year_filter == "2025"
+    assert query.tax_fields == ("K40", "K61", "K62")
     assert query.amount_multiplier == Decimal("1000.50")
+
+
+@pytest.mark.asyncio
+async def test_business_query_post_passes_selected_tax_fields_to_service(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        content=urlencode(
+            [
+                ("query_name", "Selected field review"),
+                ("isins", "IE00BMTX1Y45"),
+                ("legal_entity_type", "natural person"),
+                ("subcategory_key", "natural_person_pa_with_option"),
+                ("tax_year_filter", "2025"),
+                ("tax_fields", "K11"),
+                ("tax_fields", "K61"),
+                ("amount", "100"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    normalized_html = " ".join(response.text.split())
+    assert '<input id="tax-field-K11" name="tax_fields" type="checkbox" value="K11" checked >' in normalized_html
+    assert '<input id="tax-field-K61" name="tax_fields" type="checkbox" value="K61" checked >' in normalized_html
+    assert "<dt>Tax fields</dt>" in response.text
+    assert "K11 - AGErtraege" in response.text
+    assert "K61 - Korrekturbetrag Anschaffungskosten" in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.tax_fields == ("K11", "K61")
 
 
 @pytest.mark.asyncio
@@ -2282,6 +2340,74 @@ async def test_business_query_invalid_post_preserves_values_and_shows_errors(
     assert "Enter ISIN-like values such as IE00BMTX1Y45." in response.text
     assert "Choose a supported legal entity type." in response.text
     assert "Enter a positive amount." in response.text
+    assert "<h2>Query results</h2>" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_invalid_tax_field_submission_is_rejected_before_service(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("invalid BusinessQuery tax field POST must not call the service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Invalid tax field",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "tax_fields": "SQL",
+            "amount": "100",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Choose supported tax fields." in response.text
+    assert "<h2>Query results</h2>" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_empty_rendered_tax_field_selection_is_rejected_before_service(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("empty rendered BusinessQuery tax field POST must not call the service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Empty tax fields",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "tax_fields_present": "1",
+            "amount": "100",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Choose at least one tax field." in response.text
     assert "<h2>Query results</h2>" not in response.text
 
 

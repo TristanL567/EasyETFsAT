@@ -23,6 +23,7 @@ from fondant import update_data
 from fondant.business_query import (
     ALL_AVAILABLE_YEARS,
     DEFAULT_SUBCATEGORY_KEYS,
+    DEFAULT_TAX_FIELDS,
     BusinessQueryInput,
     BusinessQueryResult,
     execute_business_query,
@@ -63,6 +64,8 @@ BUSINESS_QUERY_TAX_YEAR_OPTIONS = tuple(
     str(year) for year in range(date.today().year, date.today().year - 8, -1)
 )
 BUSINESS_QUERY_TAX_FIELD_METADATA = {tax_line.line_code: tax_line for tax_line in TAX_LINES}
+BUSINESS_QUERY_ALLOWED_TAX_FIELDS = frozenset(tax_line.line_code for tax_line in TAX_LINES)
+BUSINESS_QUERY_DEFAULT_TAX_FIELDS = tuple(DEFAULT_TAX_FIELDS)
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 RECENT_UPDATE_DATA_JOB_LIMIT = 20
 BACKGROUND_UPDATE_DATA_JOB_LIMIT = 10
@@ -145,13 +148,14 @@ APP_SECTIONS = {
 }
 
 
-def _empty_business_query_form() -> dict[str, str]:
+def _empty_business_query_form() -> dict[str, object]:
     return {
         "query_name": "",
         "isins": "",
         "legal_entity_type": LEGAL_ENTITY_TYPES[0],
         "subcategory_key": DEFAULT_SUBCATEGORY_KEYS[LEGAL_ENTITY_TYPES[0]],
         "tax_year_filter": ALL_AVAILABLE_YEARS,
+        "tax_fields": BUSINESS_QUERY_DEFAULT_TAX_FIELDS,
         "amount": "",
         "note": "",
         "group_id": "",
@@ -172,18 +176,19 @@ def _normalize_isin_input(value: str) -> list[str]:
 
 
 def _validate_business_query_form(
-    form_values: dict[str, str],
+    form_values: dict[str, object],
     *,
     require_isins: bool = True,
 ) -> tuple[dict[str, str], dict[str, object] | None]:
     errors: dict[str, str] = {}
-    query_name = form_values["query_name"].strip()
-    normalized_isins = _normalize_isin_input(form_values["isins"])
-    legal_entity_type = form_values["legal_entity_type"]
-    subcategory_key = form_values["subcategory_key"].strip()
-    tax_year_filter = form_values["tax_year_filter"].strip()
-    amount_text = form_values["amount"].strip()
-    note = form_values["note"].strip()
+    query_name = str(form_values["query_name"]).strip()
+    normalized_isins = _normalize_isin_input(str(form_values["isins"]))
+    legal_entity_type = str(form_values["legal_entity_type"])
+    subcategory_key = str(form_values["subcategory_key"]).strip()
+    tax_year_filter = str(form_values["tax_year_filter"]).strip()
+    selected_tax_fields = _normalize_business_query_tax_fields(form_values["tax_fields"])
+    amount_text = str(form_values["amount"]).strip()
+    note = str(form_values["note"]).strip()
 
     if not query_name:
         errors["query_name"] = "Enter a custom query name."
@@ -211,6 +216,11 @@ def _validate_business_query_form(
     elif tax_year_filter != ALL_AVAILABLE_YEARS and tax_year_filter not in BUSINESS_QUERY_TAX_YEAR_OPTIONS:
         errors["tax_year_filter"] = "Choose All available years or one of the listed tax years."
 
+    if not selected_tax_fields:
+        errors["tax_fields"] = "Choose at least one tax field."
+    elif any(field_code not in BUSINESS_QUERY_ALLOWED_TAX_FIELDS for field_code in selected_tax_fields):
+        errors["tax_fields"] = "Choose supported tax fields."
+
     amount: Decimal | None = None
     if not amount_text:
         errors["amount"] = "Enter a positive amount."
@@ -235,13 +245,19 @@ def _validate_business_query_form(
         "legal_entity_type": legal_entity_type,
         "subcategory_key": subcategory_key,
         "tax_year_filter": tax_year_filter,
+        "tax_fields": selected_tax_fields,
         "amount": str(amount),
         "note": note,
     }
 
 
-def _business_query_form_values(form: Any) -> dict[str, str]:
+def _business_query_form_values(form: Any) -> dict[str, object]:
     legal_entity_type = str(form.get("legal_entity_type", ""))
+    raw_tax_fields = form.getlist("tax_fields") if hasattr(form, "getlist") else form.get("tax_fields", ())
+    has_tax_field_control = str(form.get("tax_fields_present", "")) == "1"
+    tax_fields = _normalize_business_query_tax_fields(raw_tax_fields)
+    if not tax_fields and not has_tax_field_control:
+        tax_fields = BUSINESS_QUERY_DEFAULT_TAX_FIELDS
     return {
         "query_name": str(form.get("query_name", "")),
         "isins": str(form.get("isins", "")),
@@ -250,24 +266,26 @@ def _business_query_form_values(form: Any) -> dict[str, str]:
             form.get("subcategory_key", "") or DEFAULT_SUBCATEGORY_KEYS.get(legal_entity_type, "")
         ),
         "tax_year_filter": str(form.get("tax_year_filter", "") or ALL_AVAILABLE_YEARS),
+        "tax_fields": tax_fields,
         "amount": str(form.get("amount", "")),
         "note": str(form.get("note", "")),
     }
 
 
-def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, str]:
+def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, object]:
     return {
         "query_name": str(preview["query_name"]),
         "isins": str(preview["isins_text"]),
         "legal_entity_type": str(preview["legal_entity_type"]),
         "subcategory_key": str(preview["subcategory_key"]),
         "tax_year_filter": str(preview["tax_year_filter"]),
+        "tax_fields": tuple(cast(tuple[str, ...], preview["tax_fields"])),
         "amount": str(preview["amount"]),
         "note": str(preview["note"]),
     }
 
 
-def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, str]:
+def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, object]:
     form = _empty_business_query_form()
     form.update(
         {
@@ -284,6 +302,22 @@ def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, str
     return form
 
 
+def _normalize_business_query_tax_fields(raw_tax_fields: object) -> tuple[str, ...]:
+    if isinstance(raw_tax_fields, str):
+        candidates = (raw_tax_fields,)
+    else:
+        candidates = tuple(raw_tax_fields) if isinstance(raw_tax_fields, list | tuple) else ()
+
+    normalized_fields: list[str] = []
+    seen: set[str] = set()
+    for raw_field in candidates:
+        field_code = str(raw_field).strip().upper()
+        if field_code and field_code not in seen:
+            normalized_fields.append(field_code)
+            seen.add(field_code)
+    return tuple(normalized_fields)
+
+
 def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQueryInput:
     return BusinessQueryInput(
         query_name=str(preview["query_name"]),
@@ -291,6 +325,7 @@ def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQu
         legal_entity_type=str(preview["legal_entity_type"]),
         subcategory_key=str(preview["subcategory_key"]),
         tax_year_filter=str(preview["tax_year_filter"]),
+        tax_fields=tuple(cast(tuple[str, ...], preview["tax_fields"])),
         amount_multiplier=Decimal(str(preview["amount"])),
     )
 
@@ -658,7 +693,7 @@ def _render_app_shell(
     request: Request,
     section_key: str,
     *,
-    business_query_form: dict[str, str] | None = None,
+    business_query_form: dict[str, object] | None = None,
     business_query_errors: dict[str, str] | None = None,
     business_query_status: str = "",
     business_query_result: BusinessQueryResult | None = None,

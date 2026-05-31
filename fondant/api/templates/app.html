@@ -140,6 +140,32 @@
               <p class="field-error" id="tax-year-filter-error">{{ business_query_errors.tax_year_filter }}</p>
               {% endif %}
 
+              <fieldset
+                class="tax-field-selector"
+                {% if business_query_errors.tax_fields %}aria-invalid="true" aria-describedby="tax-fields-error"{% endif %}
+              >
+                <legend>Tax fields</legend>
+                <input type="hidden" name="tax_fields_present" value="1">
+                <div class="tax-field-options">
+                  {% for tax_line in tax_lines %}
+                  <label class="tax-field-option" for="tax-field-{{ tax_line.line_code }}">
+                    <input
+                      id="tax-field-{{ tax_line.line_code }}"
+                      name="tax_fields"
+                      type="checkbox"
+                      value="{{ tax_line.line_code }}"
+                      {% if tax_line.line_code in business_query_form.tax_fields %}checked{% endif %}
+                    >
+                    <span class="tax-field-option-main">{{ tax_line.line_code }} - {{ tax_line.name_de }}</span>
+                    <span class="tax-field-option-note">{{ tax_line.usage_note }}</span>
+                  </label>
+                  {% endfor %}
+                </div>
+              </fieldset>
+              {% if business_query_errors.tax_fields %}
+              <p class="field-error" id="tax-fields-error">{{ business_query_errors.tax_fields }}</p>
+              {% endif %}
+
               <label for="amount">Amount</label>
               <input
                 id="amount"
@@ -191,6 +217,15 @@
                   <div>
                     <dt>Selected tax year</dt>
                     <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
+                  </div>
+                  <div>
+                    <dt>Tax fields</dt>
+                    <dd>
+                      {% for field_code in business_query_result.query.tax_fields %}
+                      {% set tax_field_metadata = business_query_tax_field_metadata.get(field_code) %}
+                      {{ field_code }}{% if tax_field_metadata %} - {{ tax_field_metadata.name_de }}{% endif %}{% if not loop.last %}, {% endif %}
+                      {% endfor %}
+                    </dd>
                   </div>
                   <div>
                     <dt>Amount</dt>
