@@ -194,7 +194,7 @@
                   </div>
                   <div>
                     <dt>Amount</dt>
-                    <dd>{{ business_query_result.query.amount_multiplier }}</dd>
+                    <dd>{{ format_business_query_decimal_3(business_query_result.query.amount_multiplier) }}</dd>
                   </div>
                 </dl>
                 {% if business_query_result.missing_year_messages %}
@@ -258,11 +258,11 @@
                         </td>
                         <td>{{ row.legal_entity_category }}</td>
                         <td>{{ row.home_currency_code or row.original_currency_code or row.fund_currency or "-" }}</td>
-                        <td>{{ row.base_home_currency_value if row.base_home_currency_value is not none else "-" }}</td>
-                        <td>{{ row.calculated_home_currency_value if row.calculated_home_currency_value is not none else "-" }}</td>
-                        <td>{{ row.base_eur_value if row.base_eur_value is not none else "-" }}</td>
-                        <td>{{ row.amount_multiplier }}</td>
-                        <td>{{ row.calculated_eur_value if row.calculated_eur_value is not none else "-" }}</td>
+                        <td>{{ format_business_query_decimal_3(row.base_home_currency_value) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.calculated_home_currency_value) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.base_eur_value) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.amount_multiplier) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.calculated_eur_value) }}</td>
                         <td>
                           <span class="numeric-value">{{ row.fx_rate if row.fx_rate is not none else "-" }}</span>
                           <span class="secondary-value">{{ row.fx_date if row.fx_date is not none else row.report_date if row.report_date is not none else "-" }}</span>

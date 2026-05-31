@@ -7,7 +7,7 @@ import logging
 import re
 import time
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import StringIO
 from pathlib import Path
 from typing import Annotated, Any, cast
@@ -327,6 +327,13 @@ def _format_business_query_tax_year_filter(value: str) -> str:
     if value == ALL_AVAILABLE_YEARS:
         return "All available years"
     return value
+
+
+def _format_business_query_decimal_3(value: object) -> str:
+    if value is None:
+        return "-"
+    decimal_value = Decimal(str(value))
+    return f"{decimal_value.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP):.3f}"
 
 
 def _format_optional_timestamp(value: object) -> str:
@@ -695,6 +702,7 @@ def _render_app_shell(
             "all_available_years": ALL_AVAILABLE_YEARS,
             "business_query_tax_year_options": BUSINESS_QUERY_TAX_YEAR_OPTIONS,
             "business_query_tax_field_metadata": BUSINESS_QUERY_TAX_FIELD_METADATA,
+            "format_business_query_decimal_3": _format_business_query_decimal_3,
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
             "business_query_status": business_query_status,

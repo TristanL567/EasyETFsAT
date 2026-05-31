@@ -1603,6 +1603,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<dd>BV ohne Option</dd>" in response.text
     assert "<dt>Selected tax year</dt>" in response.text
     assert "<dd>2025</dd>" in response.text
+    assert "<dt>Amount</dt>" in response.text
+    assert "<dd>1000.500</dd>" in response.text
     assert "<th scope=\"col\">ISIN</th>" in response.text
     assert "<th scope=\"col\">Tax year</th>" in response.text
     assert "<th scope=\"col\">Tax field</th>" in response.text
@@ -1619,11 +1621,12 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "K40 - Taxable income" in response.text
     assert "<td>BVM</td>" in response.text
     assert "<td>USD</td>" in response.text
-    assert "<td>11.0000000000</td>" in response.text
-    assert "<td>11005.500000000000</td>" in response.text
-    assert "<td>10.0000000000</td>" in response.text
-    assert "<td>1000.50</td>" in response.text
-    assert "<td>10005.000000000000</td>" in response.text
+    assert "<td>11.000</td>" in response.text
+    assert "<td>11005.500</td>" in response.text
+    assert "<td>10.000</td>" in response.text
+    assert "<td>1000.500</td>" in response.text
+    assert "<td>10005.000</td>" in response.text
+    # BQ3-001 formats result values only; FX remains at existing raw precision.
     assert "1.0000000000" in response.text
     assert "2025-06-15" in response.text
     assert 'formaction="/app/business-query/export"' in response.text
@@ -1760,6 +1763,130 @@ async def test_business_query_result_rows_render_when_tax_field_metadata_is_miss
 
 
 @pytest.mark.asyncio
+async def test_business_query_result_page_formats_numeric_values_to_three_decimals(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name="Formatted values",
+                    isin="IE00BMTX1Y45",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.2345678900"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=Decimal("10"),
+                    amount_multiplier=Decimal("10.1235"),
+                    calculated_eur_value=Decimal("10.1235"),
+                    original_currency_code="EUR",
+                    home_currency_code="EUR",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=Decimal("10"),
+                    calculated_home_currency_value=Decimal("10.1235"),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Formatted values",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "amount": "10.1235",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<dd>10.124</dd>" in response.text
+    assert response.text.count("<td>10.000</td>") == 2
+    assert response.text.count("<td>10.124</td>") == 3
+    # FX rate is intentionally left with existing raw precision in BQ3-001.
+    assert "1.2345678900" in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_result_page_preserves_missing_numeric_display(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name="Missing values",
+                    isin="IE00BMTX1Y45",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=None,
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=None,
+                    amount_multiplier=Decimal("1"),
+                    calculated_eur_value=None,
+                    original_currency_code="EUR",
+                    home_currency_code="EUR",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=None,
+                    calculated_home_currency_value=None,
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Missing values",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "amount": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<td>1.000</td>" in response.text
+    assert response.text.count("<td>-</td>") == 4
+    assert '<span class="numeric-value">-</span>' in response.text
+
+
+@pytest.mark.asyncio
 async def test_business_query_valid_post_with_no_rows_renders_empty_state(
     web_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -1859,10 +1986,10 @@ async def test_business_query_missing_year_messages_render_without_hiding_valid_
     assert "field-error" not in response.text
     assert "<td>IE00BMTX1Y45</td>" in response.text
     assert "<td>CHF</td>" in response.text
-    assert "<td>10.0000000000</td>" in response.text
-    assert "<td>20.0000000000</td>" in response.text
-    assert "<td>9.6153846154</td>" in response.text
-    assert "<td>19.2307692308</td>" in response.text
+    assert "<td>10.000</td>" in response.text
+    assert "<td>20.000</td>" in response.text
+    assert "<td>9.615</td>" in response.text
+    assert "<td>19.231</td>" in response.text
     assert "1.0400000000" in response.text
     assert "2025-06-15" in response.text
 
