@@ -204,6 +204,10 @@ h1 {
   background: var(--surface);
 }
 
+.business-query-form {
+  max-width: 58rem;
+}
+
 .business-query-form label,
 .search-form label,
 .update-data-form label {
@@ -440,6 +444,36 @@ h1 {
   background: var(--surface);
 }
 
+.business-query-results-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.numeric-value,
+.secondary-value {
+  display: block;
+}
+
+.secondary-value {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.availability-messages {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.availability-messages p {
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid #f1c27d;
+  border-radius: 6px;
+  background: #fff7e6;
+  color: #6b4e00;
+  font-weight: 700;
+}
+
 .result-table th,
 .result-table td {
   padding: 0.625rem 0.75rem;
@@ -453,6 +487,49 @@ h1 {
   background: #f2f5f4;
   color: var(--accent-strong);
   font-size: 0.875rem;
+}
+
+.business-query-results-table th,
+.business-query-results-table td {
+  padding: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.business-query-results-table th:nth-child(1),
+.business-query-results-table td:nth-child(1) {
+  width: 12%;
+}
+
+.business-query-results-table th:nth-child(2),
+.business-query-results-table td:nth-child(2),
+.business-query-results-table th:nth-child(5),
+.business-query-results-table td:nth-child(5),
+.business-query-results-table th:nth-child(9),
+.business-query-results-table td:nth-child(9) {
+  width: 7%;
+}
+
+.business-query-results-table th:nth-child(3),
+.business-query-results-table td:nth-child(3) {
+  width: 13%;
+}
+
+.business-query-results-table th:nth-child(4),
+.business-query-results-table td:nth-child(4),
+.business-query-results-table th:nth-child(8),
+.business-query-results-table td:nth-child(8) {
+  width: 8%;
+}
+
+.business-query-results-table th:nth-child(6),
+.business-query-results-table td:nth-child(6),
+.business-query-results-table th:nth-child(7),
+.business-query-results-table td:nth-child(7),
+.business-query-results-table th:nth-child(10),
+.business-query-results-table td:nth-child(10),
+.business-query-results-table th:nth-child(11),
+.business-query-results-table td:nth-child(11) {
+  width: 10%;
 }
 
 .tax-field-main {

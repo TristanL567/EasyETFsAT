@@ -819,6 +819,11 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
                     base_eur_value=Decimal("10.0000000000"),
                     amount_multiplier=Decimal("1000.50"),
                     calculated_eur_value=Decimal("10005.000000000000"),
+                    original_currency_code="USD",
+                    home_currency_code="USD",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=Decimal("11.0000000000"),
+                    calculated_home_currency_value=Decimal("11005.500000000000"),
                 ),
             ),
         )
@@ -856,22 +861,31 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<dd>IE00BMTX1Y45, LU1681044993</dd>" in response.text
     assert "<dt>Subcategory</dt>" in response.text
     assert "<dd>BV ohne Option</dd>" in response.text
-    assert "<dt>Tax year</dt>" in response.text
+    assert "<dt>Selected tax year</dt>" in response.text
     assert "<dd>2025</dd>" in response.text
     assert "<th scope=\"col\">ISIN</th>" in response.text
     assert "<th scope=\"col\">Tax year</th>" in response.text
     assert "<th scope=\"col\">Tax field</th>" in response.text
     assert "<th scope=\"col\">Legal entity category</th>" in response.text
-    assert "<th scope=\"col\">Base value</th>" in response.text
+    assert "<th scope=\"col\">Original/home currency</th>" in response.text
+    assert "<th scope=\"col\">Original/home base value</th>" in response.text
+    assert "<th scope=\"col\">Original/home calculated value</th>" in response.text
+    assert "<th scope=\"col\">EUR base value</th>" in response.text
     assert "<th scope=\"col\">Multiplier</th>" in response.text
-    assert "<th scope=\"col\">Calculated value</th>" in response.text
+    assert "<th scope=\"col\">EUR calculated value</th>" in response.text
+    assert "<th scope=\"col\">FX rate/date</th>" in response.text
     assert "<td>IE00BMTX1Y45</td>" in response.text
     assert "<td>2025</td>" in response.text
     assert "K40 - Taxable income" in response.text
     assert "<td>BVM</td>" in response.text
+    assert "<td>USD</td>" in response.text
+    assert "<td>11.0000000000</td>" in response.text
+    assert "<td>11005.500000000000</td>" in response.text
     assert "<td>10.0000000000</td>" in response.text
     assert "<td>1000.50</td>" in response.text
     assert "<td>10005.000000000000</td>" in response.text
+    assert "1.0000000000" in response.text
+    assert "2025-06-15" in response.text
     assert 'formaction="/app/business-query/export"' in response.text
     assert "Export CSV" in response.text
     assert "field-error" not in response.text
@@ -1042,6 +1056,111 @@ async def test_business_query_valid_post_with_no_rows_renders_empty_state(
     assert 'value="No rows"' in response.text
     assert ">IE00BMTX1Y45</textarea>" in response.text
     assert len(service_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_business_query_missing_year_messages_render_without_hiding_valid_rows(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name="Missing year review",
+                    isin="IE00BMTX1Y45",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="CHF",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.0400000000"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=Decimal("9.6153846154"),
+                    amount_multiplier=Decimal("2"),
+                    calculated_eur_value=Decimal("19.2307692308"),
+                    original_currency_code="CHF",
+                    home_currency_code="CHF",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=Decimal("10.0000000000"),
+                    calculated_home_currency_value=Decimal("20.0000000000"),
+                ),
+            ),
+            missing_year_isins=("LU1681044993",),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Missing year review",
+            "isins": "IE00BMTX1Y45\nLU1681044993",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "amount": "2",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Data for ISIN LU1681044993 is not available for the selected year." in response.text
+    assert "field-error" not in response.text
+    assert "<td>IE00BMTX1Y45</td>" in response.text
+    assert "<td>CHF</td>" in response.text
+    assert "<td>10.0000000000</td>" in response.text
+    assert "<td>20.0000000000</td>" in response.text
+    assert "<td>9.6153846154</td>" in response.text
+    assert "<td>19.2307692308</td>" in response.text
+    assert "1.0400000000" in response.text
+    assert "2025-06-15" in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_missing_year_messages_render_with_empty_results(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(query=query, rows=(), missing_year_isins=("IE00BMTX1Y45",))
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Only missing",
+            "isins": "IE00BMTX1Y45",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "2025",
+            "amount": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Data for ISIN IE00BMTX1Y45 is not available for the selected year." in response.text
+    assert "No tax rows matched the submitted ISINs." in response.text
 
 
 @pytest.mark.asyncio
@@ -1339,7 +1458,7 @@ async def test_business_query_stiftung_uses_fixed_subcategory_workflow(
     assert "Stiftung uses the fixed Stiftung category." in response.text
     assert "<dt>Subcategory</dt>" in response.text
     assert "<dd>Stiftung</dd>" in response.text
-    assert "<dt>Tax year</dt>" in response.text
+    assert "<dt>Selected tax year</dt>" in response.text
     assert "<dd>All available years</dd>" in response.text
     assert len(service_calls) == 1
     query = service_calls[0][1]

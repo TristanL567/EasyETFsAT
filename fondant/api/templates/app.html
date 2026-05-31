@@ -170,7 +170,7 @@
                     <dd>{{ business_query_subcategory_labels[business_query_result.query.subcategory_key] }}</dd>
                   </div>
                   <div>
-                    <dt>Tax year</dt>
+                    <dt>Selected tax year</dt>
                     <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
                   </div>
                   <div>
@@ -178,20 +178,31 @@
                     <dd>{{ business_query_result.query.amount_multiplier }}</dd>
                   </div>
                 </dl>
+                {% if business_query_result.missing_year_messages %}
+                <div class="availability-messages" role="status" aria-label="Selected-year availability">
+                  {% for message in business_query_result.missing_year_messages %}
+                  <p>{{ message }}</p>
+                  {% endfor %}
+                </div>
+                {% endif %}
                 {% if business_query_result.is_empty %}
                 <p class="empty-state">No tax rows matched the submitted ISINs.</p>
                 {% else %}
                 <div class="result-table-wrap">
-                  <table class="result-table">
+                  <table class="result-table business-query-results-table">
                     <thead>
                       <tr>
                         <th scope="col">ISIN</th>
                         <th scope="col">Tax year</th>
                         <th scope="col">Tax field</th>
                         <th scope="col">Legal entity category</th>
-                        <th scope="col">Base value</th>
+                        <th scope="col">Original/home currency</th>
+                        <th scope="col">Original/home base value</th>
+                        <th scope="col">Original/home calculated value</th>
+                        <th scope="col">EUR base value</th>
                         <th scope="col">Multiplier</th>
-                        <th scope="col">Calculated value</th>
+                        <th scope="col">EUR calculated value</th>
+                        <th scope="col">FX rate/date</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -227,9 +238,16 @@
                           {% endif %}
                         </td>
                         <td>{{ row.legal_entity_category }}</td>
+                        <td>{{ row.home_currency_code or row.original_currency_code or row.fund_currency or "-" }}</td>
+                        <td>{{ row.base_home_currency_value if row.base_home_currency_value is not none else "-" }}</td>
+                        <td>{{ row.calculated_home_currency_value if row.calculated_home_currency_value is not none else "-" }}</td>
                         <td>{{ row.base_eur_value if row.base_eur_value is not none else "-" }}</td>
                         <td>{{ row.amount_multiplier }}</td>
                         <td>{{ row.calculated_eur_value if row.calculated_eur_value is not none else "-" }}</td>
+                        <td>
+                          <span class="numeric-value">{{ row.fx_rate if row.fx_rate is not none else "-" }}</span>
+                          <span class="secondary-value">{{ row.fx_date if row.fx_date is not none else row.report_date if row.report_date is not none else "-" }}</span>
+                        </td>
                       </tr>
                       {% endfor %}
                     </tbody>
