@@ -4,3 +4,4 @@
 | 2026-06-01T19:05:27+02:00 | BQ5-001 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ5-001; remediation fixed BQ5-005 scope wording; planner validation passed rg checks, diff check, and status review. | null |
 | 2026-06-01T19:16:52+02:00 | BQ5-002 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ5-002; planner validation passed web route tests, ruff, diff check, and scope review. | null |
 | 2026-06-01T19:30:26+02:00 | BQ5-003 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ5-003; planner validation passed web route tests, ruff, diff check, CSV precision evidence, and scope review. | null |
+| 2026-06-01T19:46:54+02:00 | BQ5-004 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ5-004; planner validation passed web route tests, ruff, diff check, and scope review. | null |

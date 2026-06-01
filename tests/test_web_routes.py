@@ -3515,6 +3515,10 @@ async def test_documentation_page_renders_authenticated_help_content(
     assert response.status_code == 200
     assert "<title>Documentation - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Documentation</h1>' in response.text
+    assert "workspace-panel documentation-workspace" in response.text
+    assert "placeholder-panel documentation-panel" in response.text
+    assert "result-table-wrap documentation-table-wrap" in response.text
+    assert "result-table documentation-tax-field-table" in response.text
     assert "Quick reference for authenticated BusinessQuery and Search use." in response.text
     assert "K40" in response.text
     assert "K61" in response.text

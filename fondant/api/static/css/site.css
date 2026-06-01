@@ -193,6 +193,10 @@ h1 {
   max-width: 88rem;
 }
 
+.documentation-workspace {
+  max-width: 96rem;
+}
+
 .placeholder-panel {
   margin-top: 2rem;
   padding: 1.25rem;
@@ -209,6 +213,10 @@ h1 {
 .placeholder-panel p {
   margin: 0.5rem 0 0;
   color: var(--muted);
+}
+
+.documentation-panel p {
+  max-width: 58rem;
 }
 
 .business-query-form,
@@ -573,6 +581,28 @@ h1 {
 .business-query-results-table {
   min-width: 78rem;
   table-layout: fixed;
+}
+
+.documentation-tax-field-table {
+  min-width: 74rem;
+  table-layout: fixed;
+}
+
+.documentation-tax-field-table th:nth-child(1),
+.documentation-tax-field-table td:nth-child(1) {
+  width: 8%;
+}
+
+.documentation-tax-field-table th:nth-child(2),
+.documentation-tax-field-table td:nth-child(2) {
+  width: 22%;
+}
+
+.documentation-tax-field-table th:nth-child(3),
+.documentation-tax-field-table td:nth-child(3),
+.documentation-tax-field-table th:nth-child(4),
+.documentation-tax-field-table td:nth-child(4) {
+  width: 35%;
 }
 
 .numeric-value,

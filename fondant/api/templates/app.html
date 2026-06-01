@@ -49,7 +49,7 @@
         </header>
 
         <main class="portal-content">
-          <section class="workspace-panel{% if section_key in ["business-query", "business-query-queries"] %} business-query-workspace{% endif %}" aria-labelledby="app-title">
+          <section class="workspace-panel{% if section_key in ["business-query", "business-query-queries"] %} business-query-workspace{% elif section_key == "documentation" %} documentation-workspace{% endif %}" aria-labelledby="app-title">
             <p class="eyebrow">Authenticated workspace</p>
             <h1 id="app-title">{{ section.title }}</h1>
             <p class="summary">{{ section.summary }}</p>
@@ -902,7 +902,7 @@
               {% endif %}
             </div>
             {% else %}
-            <div class="placeholder-panel">
+            <div class="placeholder-panel{% if section_key == "documentation" %} documentation-panel{% endif %}">
               <h2>BusinessQuery reference</h2>
               <p>PA mit Option means private assets with option; PA ohne Option means private assets without option. BV mit Option means business assets with option; BV ohne Option means business assets without option; BV jur. Person means business assets for a legal person. Stiftung means foundation assets.</p>
               <p>Legal entity mappings: natural person uses PVM and PVO; business uses BVM, BVO, and BVJ; Stiftung uses STI.</p>
@@ -919,8 +919,8 @@
               <p>Search helps find available fund tax data by ISIN or fund/security name, then sends a selected ISIN into BusinessQuery.</p>
               <h2>Tax field reference</h2>
               <p>Descriptions are based on OeKB tax field documentation.</p>
-              <div class="result-table-wrap">
-                <table class="result-table">
+              <div class="result-table-wrap documentation-table-wrap">
+                <table class="result-table documentation-tax-field-table">
                   <thead>
                     <tr>
                       <th scope="col">Field</th>
