@@ -485,8 +485,9 @@
             {% elif section_key == "business-query-queries" %}
             <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
               <h2>Saved queries</h2>
+              <p class="form-note">Review existing saved queries. Use Run to execute saved default ISINs, Load to adjust a rule, or Edit to update it.</p>
               <form class="group-filter-form" method="get" action="/app/business-query/queries" aria-label="Filter saved queries by group">
-                <label for="saved-query-group-filter">Group</label>
+                <label for="saved-query-group-filter">Filter by group</label>
                 <select id="saved-query-group-filter" name="group_id">
                   <option value=""{% if not selected_business_query_group_id %} selected{% endif %}>All groups</option>
                   <option value="ungrouped"{% if selected_business_query_group_id == "ungrouped" %} selected{% endif %}>Ungrouped</option>
@@ -611,7 +612,7 @@
                         <th scope="col">Tax year</th>
                         <th scope="col">Amount</th>
                         <th scope="col">Updated</th>
-                        <th scope="col">Action</th>
+                        <th scope="col">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -648,7 +649,7 @@
               {% elif selected_business_query_group_id %}
               <p class="empty-state">Selected group has no saved queries.</p>
               {% else %}
-              <p class="empty-state">No saved queries yet.</p>
+              <p class="empty-state">No saved queries yet. Create one from Add New Query after entering a BusinessQuery rule.</p>
               {% endif %}
             </div>
             {% elif section_key == "business-query-groups" %}

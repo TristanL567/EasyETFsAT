@@ -406,8 +406,16 @@ async def test_business_query_queries_renders_saved_query_management(
     assert '<label for="group-description">Description</label>' not in response.text
     assert "Create group" not in response.text
     assert "<h2>Saved queries</h2>" in response.text
+    assert (
+        "Review existing saved queries. Use Run to execute saved default ISINs, "
+        "Load to adjust a rule, or Edit to update it."
+    ) in response.text
     assert 'aria-label="Filter saved queries by group"' in response.text
-    assert "No saved queries yet." in response.text
+    assert "Filter by group" in response.text
+    assert (
+        "No saved queries yet. Create one from Add New Query after entering a BusinessQuery rule."
+        in response.text
+    )
     assert "No groups yet." not in response.text
     assert '<form class="business-query-form"' not in response.text
     assert ">BusinessQuery<" in response.text
@@ -794,13 +802,23 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
     assert "<title>Queries - EasyETFsAT</title>" in response.text
     assert '<h1 id="app-title">Queries</h1>' in response.text
     assert "<h2>Saved queries</h2>" in response.text
+    assert (
+        "Review existing saved queries. Use Run to execute saved default ISINs, "
+        "Load to adjust a rule, or Edit to update it."
+    ) in response.text
+    assert "Filter by group" in response.text
     assert '<form class="business-query-form"' not in response.text
+    assert 'action="/app/business-query/groups"' not in response.text
+    assert "Create group" not in response.text
     assert "<td>Admin saved rule</td>" in response.text
     assert "<td>business</td>" in response.text
     assert "<td>BV mit Option</td>" in response.text
     assert "<td>2025</td>" in response.text
+    assert '<th scope="col">Actions</th>' in response.text
     assert '<h3 id="saved-query-group-ungrouped">Ungrouped</h3>' in response.text
     assert "/app/business-query/queries/" in response.text
+    assert ">Run</button>" in response.text
+    assert ">Load</button>" in response.text
     assert ">Edit</a>" in response.text
     assert "Other user rule" not in response.text
     assert "other-user" not in response.text

@@ -16,3 +16,5 @@
 | 2026-05-31T22:35:15+02:00 | BQ4-007 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web route tests, ruff, diff check. | null |
 | 2026-05-31T22:35:55+02:00 | BQ4-008 | dispatched | human_approved_dispatch | Human instructed the planner to continue implementing the remaining epic tickets through AEGIS; dispatching direct saved-query run ticket after BQ4-007 commit 227b751. | 227b751 |
 | 2026-06-01T07:19:57+02:00 | BQ4-008 | validator_approved | approved_for_commit | Master-agent partial work was recovered and completed; planner validation passed: web/service tests, ruff, diff check. | null |
+| 2026-06-01T07:22:57+02:00 | BQ4-009 | dispatched | automatic_dispatch | BQ4-009 is not a human checkpoint; dispatching Queries page clarity ticket after BQ4-008 commit fe5d05f. | fe5d05f |
+| 2026-06-01T07:22:57+02:00 | BQ4-009 | validator_approved | approved_for_commit | Planner validation passed: web route tests, ruff, diff check. Browser manual QA was not available in this run. | null |
