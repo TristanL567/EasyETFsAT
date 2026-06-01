@@ -9,6 +9,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql import Select
 
 from fondant.business_query import (
+    MOST_RECENT_COMMON_AVAILABLE_YEAR,
     BusinessQueryInput,
     BusinessQueryPosition,
     BusinessQueryValidationError,
@@ -34,13 +35,22 @@ class _FakeExecuteResult:
 
 
 class _FakeSession:
-    def __init__(self, rows: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        execute_rows: list[list[dict[str, Any]]] | None = None,
+    ) -> None:
         self.rows = rows
         self.statement: Select[tuple[Any, ...]] | None = None
+        self.statements: list[Select[tuple[Any, ...]]] = []
+        self._execute_rows = list(execute_rows) if execute_rows is not None else None
 
     async def execute(self, statement: Select[tuple[Any, ...]]) -> _FakeExecuteResult:
         self.statement = statement
-        return _FakeExecuteResult(self.rows)
+        self.statements.append(statement)
+        rows = self._execute_rows.pop(0) if self._execute_rows is not None else self.rows
+        return _FakeExecuteResult(rows)
 
 
 def _view_row(**overrides: Any) -> dict[str, Any]:
@@ -579,6 +589,77 @@ async def test_business_query_specific_tax_year_filter_adds_year_predicate() -> 
     assert '"TAXYEA" = 2024' in compiled_sql
     assert result.query.tax_year_filter == "2024"
     assert result.query.year == 2024
+    assert result.missing_year_isins == ()
+
+
+@pytest.mark.asyncio
+async def test_business_query_most_recent_common_available_year_resolves_before_main_query() -> None:
+    availability_rows = [
+        _view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2023),
+        _view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2025),
+        _view_row(TAXISN="LU1681044993", TAXYEA=2023),
+        _view_row(TAXISN="LU1681044993", TAXYEA=2024),
+    ]
+    main_rows = [
+        _view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2023),
+        _view_row(TAXISN="LU1681044993", TAXYEA=2023),
+    ]
+    session = _FakeSession([], execute_rows=[availability_rows, main_rows])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Latest common",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="business",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            subcategory_key="business_bv_with_option",
+            tax_year_filter=MOST_RECENT_COMMON_AVAILABLE_YEAR,
+        ),
+    )
+
+    assert len(session.statements) == 2
+    availability_sql = _compiled_sql(session.statements[0])
+    main_sql = _compiled_sql(session.statements[1])
+    assert 'FROM "V2_TAXDATHOMCCY"' in availability_sql
+    assert "DISTINCT" in availability_sql
+    assert '"TAXYEA" IS NOT NULL' in availability_sql
+    assert '"TAXYEA" = 2023' in main_sql
+    assert result.query.tax_year_filter == "2023"
+    assert result.query.year == 2023
+    assert result.count == 2
+    assert result.no_common_year_isins == ()
+
+
+@pytest.mark.asyncio
+async def test_business_query_most_recent_common_available_year_returns_structured_no_common_result() -> None:
+    availability_rows = [
+        _view_row(TAXISN="IE00BMTX1Y45", TAXYEA=2025),
+        _view_row(TAXISN="LU1681044993", TAXYEA=2024),
+    ]
+    session = _FakeSession([], execute_rows=[availability_rows])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="No common year",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K40",),
+            tax_year_filter=MOST_RECENT_COMMON_AVAILABLE_YEAR,
+        ),
+    )
+
+    assert len(session.statements) == 1
+    assert result.is_empty is True
+    assert result.rows == ()
+    assert result.query.tax_year_filter == MOST_RECENT_COMMON_AVAILABLE_YEAR
+    assert result.no_common_year_isins == ("IE00BMTX1Y45", "LU1681044993")
+    assert result.no_common_year_messages == (
+        "No common tax year is available for every submitted ISIN: IE00BMTX1Y45, LU1681044993.",
+    )
     assert result.missing_year_isins == ()
 
 

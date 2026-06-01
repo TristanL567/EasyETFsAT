@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
@@ -14,6 +14,7 @@ from fondant.tax_registry import TAX_LINES
 
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
 ALL_AVAILABLE_YEARS = "all_available_years"
+MOST_RECENT_COMMON_AVAILABLE_YEAR = "most_recent_common_available_year"
 
 LEGAL_ENTITY_SUFFIXES = MappingProxyType(
     {
@@ -148,12 +149,20 @@ class BusinessQueryResult:
     query: BusinessQueryInput
     rows: tuple[BusinessQueryResultRow, ...] = field(default_factory=tuple)
     missing_year_isins: tuple[str, ...] = field(default_factory=tuple)
+    no_common_year_isins: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def missing_year_messages(self) -> tuple[str, ...]:
         return tuple(
             f"Data for ISIN {isin} is not available for the selected year." for isin in self.missing_year_isins
         )
+
+    @property
+    def no_common_year_messages(self) -> tuple[str, ...]:
+        if not self.no_common_year_isins:
+            return ()
+        joined_isins = ", ".join(self.no_common_year_isins)
+        return (f"No common tax year is available for every submitted ISIN: {joined_isins}.",)
 
     @property
     def count(self) -> int:
@@ -215,6 +224,12 @@ async def execute_business_query(
     query: BusinessQueryInput,
 ) -> BusinessQueryResult:
     validated = validate_business_query_input(query)
+    if validated.tax_year_filter == MOST_RECENT_COMMON_AVAILABLE_YEAR:
+        resolved_year = await _resolve_most_recent_common_tax_year(session, validated)
+        if resolved_year is None:
+            return BusinessQueryResult(query=validated, no_common_year_isins=validated.isins)
+        validated = replace(validated, tax_year_filter=str(resolved_year), year=resolved_year)
+
     suffixes = _suffixes_for_validated_query(validated)
     selected_amount_columns = _selected_amount_column_names(validated.tax_fields, suffixes)
 
@@ -267,6 +282,38 @@ def _build_business_query_statement(
         statement = statement.where(V2_TAXDATHOMCCY.c.TAXYEA.between(query.year_from, query.year_to))
 
     return statement
+
+
+async def _resolve_most_recent_common_tax_year(
+    session: AsyncSession,
+    query: BusinessQueryInput,
+) -> int | None:
+    statement = (
+        sa.select(V2_TAXDATHOMCCY.c.TAXISN, V2_TAXDATHOMCCY.c.TAXYEA)
+        .select_from(V2_TAXDATHOMCCY)
+        .where(V2_TAXDATHOMCCY.c.TAXISN.in_(query.isins))
+        .where(V2_TAXDATHOMCCY.c.TAXYEA.is_not(None))
+        .distinct()
+    )
+    result = await session.execute(statement)
+    availability_rows = result.mappings().all()
+
+    years_by_isin: dict[str, set[int]] = {isin: set() for isin in query.isins}
+    for row in availability_rows:
+        isin = str(row["TAXISN"]).upper()
+        if isin not in years_by_isin:
+            continue
+        year = row["TAXYEA"]
+        if year is not None:
+            years_by_isin[isin].add(int(year))
+
+    if any(not years for years in years_by_isin.values()):
+        return None
+
+    common_years = set.intersection(*years_by_isin.values())
+    if not common_years:
+        return None
+    return max(common_years)
 
 
 def _normalize_isins(raw_isins: tuple[str, ...]) -> tuple[str, ...]:
@@ -369,17 +416,19 @@ def _normalize_tax_year_filter(tax_year_filter: str | int) -> tuple[str, int | N
 
     if not isinstance(tax_year_filter, str):
         raise BusinessQueryValidationError(
-            f"tax_year_filter must be {ALL_AVAILABLE_YEARS} or a year between 1900 and 3000"
+            f"tax_year_filter must be {ALL_AVAILABLE_YEARS}, {MOST_RECENT_COMMON_AVAILABLE_YEAR}, "
+            "or a year between 1900 and 3000"
         )
 
     normalized_filter = tax_year_filter.strip()
-    if normalized_filter == ALL_AVAILABLE_YEARS:
-        return ALL_AVAILABLE_YEARS, None
+    if normalized_filter in {ALL_AVAILABLE_YEARS, MOST_RECENT_COMMON_AVAILABLE_YEAR}:
+        return normalized_filter, None
     if normalized_filter.isdecimal():
         year = _validate_year(int(normalized_filter))
         return str(year), year
     raise BusinessQueryValidationError(
-        f"tax_year_filter must be {ALL_AVAILABLE_YEARS} or a year between 1900 and 3000"
+        f"tax_year_filter must be {ALL_AVAILABLE_YEARS}, {MOST_RECENT_COMMON_AVAILABLE_YEAR}, "
+        "or a year between 1900 and 3000"
     )
 
 
