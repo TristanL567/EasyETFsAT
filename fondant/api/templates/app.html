@@ -49,7 +49,7 @@
         </header>
 
         <main class="portal-content">
-          <section class="workspace-panel" aria-labelledby="app-title">
+          <section class="workspace-panel{% if section_key in ["business-query", "business-query-queries"] %} business-query-workspace{% endif %}" aria-labelledby="app-title">
             <p class="eyebrow">Authenticated workspace</p>
             <h1 id="app-title">{{ section.title }}</h1>
             <p class="summary">{{ section.summary }}</p>
@@ -217,6 +217,19 @@
                   <div>
                     <dt>Selected tax year</dt>
                     <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
+                  </div>
+                  {% set oekb_release_dates = business_query_result.rows | map(attribute="report_date") | reject("none") | unique | sort | list %}
+                  <div>
+                    <dt>OeKB release date</dt>
+                    <dd>
+                      {% if oekb_release_dates | length == 0 %}
+                      -
+                      {% elif oekb_release_dates | length == 1 %}
+                      {{ oekb_release_dates[0] }}
+                      {% else %}
+                      {{ oekb_release_dates | length }} dates: {{ oekb_release_dates | join(", ") }}
+                      {% endif %}
+                    </dd>
                   </div>
                   <div>
                     <dt>Tax fields</dt>
@@ -526,6 +539,19 @@
                   <div>
                     <dt>Selected tax year</dt>
                     <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
+                  </div>
+                  {% set oekb_release_dates = business_query_result.rows | map(attribute="report_date") | reject("none") | unique | sort | list %}
+                  <div>
+                    <dt>OeKB release date</dt>
+                    <dd>
+                      {% if oekb_release_dates | length == 0 %}
+                      -
+                      {% elif oekb_release_dates | length == 1 %}
+                      {{ oekb_release_dates[0] }}
+                      {% else %}
+                      {{ oekb_release_dates | length }} dates: {{ oekb_release_dates | join(", ") }}
+                      {% endif %}
+                    </dd>
                   </div>
                   <div>
                     <dt>Tax fields</dt>

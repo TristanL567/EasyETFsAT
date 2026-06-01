@@ -189,6 +189,10 @@ h1 {
   min-width: 0;
 }
 
+.business-query-workspace {
+  max-width: 88rem;
+}
+
 .placeholder-panel {
   margin-top: 2rem;
   padding: 1.25rem;
@@ -222,7 +226,7 @@ h1 {
 }
 
 .business-query-form {
-  max-width: 58rem;
+  max-width: 88rem;
 }
 
 .business-query-form label,
@@ -567,7 +571,7 @@ h1 {
 }
 
 .business-query-results-table {
-  min-width: 0;
+  min-width: 78rem;
   table-layout: fixed;
 }
 

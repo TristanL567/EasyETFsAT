@@ -1728,6 +1728,9 @@ async def test_owner_can_run_saved_business_query_from_queries_page(
     assert "<dd>Direct run rule</dd>" in response.text
     assert "<dd>LU1681044993</dd>" in response.text
     assert "<dd>BV jur. Person</dd>" in response.text
+    normalized_html = " ".join(response.text.split())
+    assert "<dt>OeKB release date</dt>" in response.text
+    assert "<dd> 2025-06-15 </dd>" in normalized_html
     assert "K11 - AG Ertraege" in response.text
     assert "<td>LU1681044993</td>" in response.text
     assert "<td>BVJ</td>" in response.text
@@ -1901,6 +1904,9 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<dd>BV ohne Option</dd>" in response.text
     assert "<dt>Selected tax year</dt>" in response.text
     assert "<dd>2025</dd>" in response.text
+    normalized_html = " ".join(response.text.split())
+    assert "<dt>OeKB release date</dt>" in response.text
+    assert "<dd> 2025-06-15 </dd>" in normalized_html
     assert "<dt>Amount</dt>" in response.text
     assert "<dd>1000.500</dd>" in response.text
     assert "<th scope=\"col\">ISIN</th>" in response.text
@@ -1939,6 +1945,76 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert query.tax_year_filter == "2025"
     assert query.tax_fields == ("K40", "K61", "K62")
     assert query.amount_multiplier == Decimal("1000.50")
+
+
+@pytest.mark.asyncio
+async def test_business_query_result_summary_renders_multiple_oekb_release_dates(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name="Release review",
+                    isin="IE00BMTX1Y45",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.0000000000"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=Decimal("10.0000000000"),
+                    amount_multiplier=Decimal("1"),
+                    calculated_eur_value=Decimal("10.0000000000"),
+                ),
+                BusinessQueryResultRow(
+                    query_name="Release review",
+                    isin="LU1681044993",
+                    tax_year=2025,
+                    oekb_report_id=1002,
+                    fund_currency="EUR",
+                    report_date=date(2025, 7, 1),
+                    fx_rate=Decimal("1.0000000000"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K40",
+                    tax_field_label="Taxable income",
+                    base_eur_value=Decimal("20.0000000000"),
+                    amount_multiplier=Decimal("1"),
+                    calculated_eur_value=Decimal("20.0000000000"),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Release review",
+            "isins": "IE00BMTX1Y45\nLU1681044993",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_without_option",
+            "tax_year_filter": "2025",
+            "amount": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<dt>OeKB release date</dt>" in response.text
+    assert "2 dates: 2025-06-15, 2025-07-01" in response.text
 
 
 @pytest.mark.asyncio
