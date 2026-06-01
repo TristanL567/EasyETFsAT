@@ -1,0 +1,40 @@
+ticket_id: BQ6-006
+dispatched_by: master-planner
+goal: Add saved-query persistence for ordered per-ISIN positions.
+dependencies:
+  - BQ6-005 approved
+allowed_areas:
+  - alembic/versions/
+  - fondant/db/models/business_query.py
+  - fondant/db/models/__init__.py
+  - tests/test_migrations.py
+  - tests/test_saved_business_query_model.py
+must_not_touch:
+  - fondant/api/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Add optional backward-compatible saved-query storage for ordered positions.
+  - Preserve existing saved queries that only store default ISINs and global amount.
+  - Add model and migration tests.
+non_goals:
+  - No UI route wiring.
+  - No BusinessQuery execution changes.
+acceptance_criteria:
+  - Migration is additive.
+  - Saved query model can store and reload ordered positions.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_migrations.py tests/test_saved_business_query_model.py
+  - py -3.10 -m alembic heads
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Saved rules should preserve per-ISIN amounts.
+user_or_operator_outcome: Saved queries reload with each ISIN's amount intact.
+design_concept: Additive structured persistence.
+architecture_boundary: Schema/model/tests only.
+success_signal: Model tests prove ordered positions persist.
+tradeoffs_or_constraints: Do not rewrite existing saved queries.
+

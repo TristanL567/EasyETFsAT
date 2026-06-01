@@ -1,0 +1,41 @@
+ticket_id: BQ6-005
+dispatched_by: master-planner
+goal: Wire BusinessQuery web execution and CSV export to per-ISIN positions and latest-common-year selection.
+dependencies:
+  - BQ6-004 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Pass structured positions into BusinessQueryInput.
+  - Add latest common available tax year as a selectable tax-year option.
+  - Render no-common-year messages clearly.
+  - Show the applied amount per ISIN in results.
+  - Include applied amount in CSV if BQ6-001 specifies it.
+non_goals:
+  - No schema changes.
+  - No saved-query persistence changes.
+acceptance_criteria:
+  - Web tests prove per-ISIN amounts affect rendered results.
+  - Web tests prove latest-common-year option is submitted.
+  - CSV behavior matches the approved BQ6-001 contract.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Execution must use the amounts users entered in the table.
+user_or_operator_outcome: Results and exports reflect per-ISIN holdings.
+design_concept: Current form state remains authoritative for run/export.
+architecture_boundary: Web route/template/tests only.
+success_signal: Tests prove execution and export receive positions.
+tradeoffs_or_constraints: Persistence is a later ticket.
+

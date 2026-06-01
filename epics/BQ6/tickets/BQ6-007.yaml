@@ -1,0 +1,41 @@
+ticket_id: BQ6-007
+dispatched_by: master-planner
+goal: Wire saved-query save, load, edit, direct run, and export flows to persisted positions.
+dependencies:
+  - BQ6-006 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - tests/test_web_routes.py
+must_not_touch:
+  - alembic/
+  - fondant/db/models/
+  - fondant/business_query.py
+  - .env
+requirements:
+  - Save positions from table/paste inputs when present.
+  - Load old saved queries using global amount fallback.
+  - Load new saved queries with row-specific amounts.
+  - Direct Run uses saved positions when present.
+  - Preserve owner scoping.
+non_goals:
+  - No schema changes.
+  - No service changes.
+  - No delete/archive.
+acceptance_criteria:
+  - Tests cover save, load, edit, direct run, and export flows for positions.
+  - Old saved query compatibility remains covered.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_saved_business_query_model.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Saved-query reuse must include per-ISIN amounts.
+user_or_operator_outcome: Users do not re-enter holdings when rerunning saved rules.
+design_concept: Saved rule state round-trips through the table editor.
+architecture_boundary: Web routes/templates/tests only.
+success_signal: Web tests prove saved positions survive edit/reload/rerun.
+tradeoffs_or_constraints: Avoid changing ownership/security model.
+

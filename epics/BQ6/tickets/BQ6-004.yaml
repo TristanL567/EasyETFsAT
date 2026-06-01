@@ -1,0 +1,44 @@
+ticket_id: BQ6-004
+dispatched_by: master-planner
+goal: Replace the Add New Query ISIN textarea with a table-first per-ISIN amount input and paste-mode toggle.
+dependencies:
+  - BQ6-003 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Render table rows with ISIN and amount inputs as the primary Add New Query input.
+  - Add a top-right toggle to switch to paste mode.
+  - Parse paste-mode values into structured rows before validation or execution.
+  - Preserve row order and row-level validation messages.
+  - Keep compatibility with loaded saved queries that only have default ISINs and global amount.
+non_goals:
+  - No saved-query schema changes.
+  - No delete/archive behavior.
+  - No BusinessQuery service changes.
+acceptance_criteria:
+  - GET renders table input and paste toggle.
+  - POST accepts structured row inputs.
+  - Invalid rows preserve entered values and show friendly errors.
+manual_verification_required: true
+manual_verification_steps:
+  - Human reviews the new Add New Query input visually before continuing.
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: This is the visible workflow change requested by the user.
+user_or_operator_outcome: Users enter ISIN-specific amounts without technical syntax.
+design_concept: Table-first UX with paste fallback.
+architecture_boundary: Web UI/routes/tests only.
+success_signal: Web tests prove table and paste paths produce structured positions.
+tradeoffs_or_constraints: Browser visual QA is required before deeper persistence work.
+

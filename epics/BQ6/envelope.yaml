@@ -1,0 +1,56 @@
+epic_id: BQ6
+goal: >
+  Implement BusinessQuery per-ISIN amount input with a table-first GUI,
+  paste-mode fallback, latest common available tax-year selection, per-ISIN
+  execution, saved-query persistence, and updated result/export/documentation
+  behavior while preserving existing global amount compatibility.
+branch: development
+base: main
+autonomy_policy: checkpointed
+human_checkpoint_tickets:
+  - BQ6-001
+  - BQ6-004
+  - BQ6-009
+  - BQ6-010
+epic_allowed_areas:
+  - epics/BQ6/
+  - Documentation/Validation/
+  - alembic/versions/
+  - fondant/business_query.py
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - fondant/db/models/
+  - tests/
+epic_must_not_touch:
+  - .env
+  - .env.example
+  - docker-compose.yml
+  - pyproject.toml
+  - README.md
+  - fondant/config.py
+  - fondant/ingestion/
+  - fondant/oekb/
+  - fondant/ecb/
+  - scripts/
+  - easyetfsat.egg-info/
+  - .git/
+tickets:
+  - BQ6-001
+  - BQ6-002
+  - BQ6-003
+  - BQ6-004
+  - BQ6-005
+  - BQ6-006
+  - BQ6-007
+  - BQ6-008
+  - BQ6-009
+  - BQ6-010
+depends_on_epics:
+  - BQ5 merged to main at 9417deb or later
+merge_policy:
+  strategy: fast-forward
+  target_base: main
+  requires_epic_validator: true
+  requires_human_approval: true
+

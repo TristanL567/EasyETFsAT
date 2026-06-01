@@ -1,0 +1,61 @@
+ticket_id: BQ6-001
+dispatched_by: master-planner
+goal: Define detailed requirements and architecture for BusinessQuery per-ISIN amount input, paste mode, latest common available tax year, execution, persistence, and rollout.
+dependencies:
+  - Documentation/Validation/BQ5-005_PER_ISIN_NOTIONAL_UX_AND_ARCHITECTURE.md
+  - BQ5 merged to main at 9417deb or later
+  - Current repo branch must be development.
+allowed_areas:
+  - Documentation/Validation/BQ6-001_PER_ISIN_AMOUNT_REQUIREMENTS.md
+must_not_touch:
+  - fondant/
+  - alembic/
+  - tests/
+  - scripts/
+  - .env
+  - .env.example
+  - docker-compose.yml
+  - pyproject.toml
+requirements:
+  - Document current BusinessQuery behavior and BQ5 per-ISIN notional plan.
+  - Define table-first GUI input with ISIN column, amount column, row add/remove controls, and row-level validation.
+  - Define paste-mode toggle and supported paste formats such as `ISIN, 5`, `ISIN; 5`, tab-separated, and simple two-column whitespace input.
+  - Define how paste input maps back into table rows before execution.
+  - Define `Most recent common available year` semantics as the latest TAXYEA available for every submitted ISIN.
+  - Define behavior when no common tax year exists.
+  - Define backend position shape and compatibility with the existing global amount fallback.
+  - Define saved-query persistence implications and migration requirements.
+  - Define result and CSV behavior, including showing the applied amount per ISIN.
+  - List BQ6-002 through BQ6-010 follow-up tickets.
+non_goals:
+  - No code changes.
+  - No migrations.
+  - No GUI implementation.
+  - No BusinessQuery service implementation.
+acceptance_criteria:
+  - Requirements document exists and is readable standalone.
+  - Document mentions table input, paste mode, positions, latest common available year, no-common-year behavior, saved-query persistence, migration, CSV, and global amount fallback.
+  - Scope is documentation-only.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - rg -n "table|paste|positions|latest common|available year|no common|global amount|saved-query|migration|CSV" Documentation/Validation/BQ6-001_PER_ISIN_AMOUNT_REQUIREMENTS.md
+  - git diff --check
+  - git status --short --branch --untracked-files=all
+completion_report_required: true
+business_context: >
+  Users need realistic portfolio-style BusinessQuery inputs where each ISIN can
+  carry its own amount and the query can choose the newest tax year shared by
+  all selected instruments.
+user_or_operator_outcome: >
+  Non-technical users can review and approve the precise per-ISIN workflow
+  before implementation touches the service, persistence, and GUI.
+design_concept: >
+  Table-first entry is the default, paste mode is a convenience, and existing
+  global amount behavior remains a compatibility fallback.
+architecture_boundary: Documentation only.
+success_signal: A validated requirements artifact can drive focused implementation tickets.
+tradeoffs_or_constraints: >
+  Later implementation crosses UI, service logic, query filtering, saved-query
+  persistence, and export behavior, so the first ticket must lock the contract.
+

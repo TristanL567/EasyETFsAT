@@ -1,0 +1,39 @@
+ticket_id: BQ6-008
+dispatched_by: master-planner
+goal: Update BusinessQuery documentation and user guidance for table input, paste mode, per-ISIN amounts, and latest-common-year selection.
+dependencies:
+  - BQ6-007 approved
+allowed_areas:
+  - fondant/api/templates/app.html
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/api/routes/web.py
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Explain table input and paste mode in authenticated Documentation.
+  - Explain global amount fallback versus per-ISIN positions.
+  - Explain latest common available year and no-common-year behavior.
+  - Keep wording concise and user-facing.
+non_goals:
+  - No behavior changes.
+  - No layout redesign beyond needed documentation text.
+acceptance_criteria:
+  - Documentation contains the new workflow guidance.
+  - Tests assert the key user-facing guidance appears.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Users need plain-language help for the new workflow.
+user_or_operator_outcome: Users understand when to use table mode, paste mode, and latest-common-year.
+design_concept: In-app help stays concise and operational.
+architecture_boundary: Template/tests only.
+success_signal: Web tests assert guidance text.
+tradeoffs_or_constraints: Avoid tax-advice wording.
+

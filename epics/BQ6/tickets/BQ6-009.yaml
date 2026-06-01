@@ -1,0 +1,39 @@
+ticket_id: BQ6-009
+dispatched_by: master-planner
+goal: Run focused regression readiness for BusinessQuery per-ISIN amount workflows.
+dependencies:
+  - BQ6-008 approved
+allowed_areas:
+  - Documentation/Validation/BQ6-009_PER_ISIN_AMOUNT_READINESS.md
+  - tests/test_web_routes.py
+  - tests/test_business_query_service.py
+  - tests/test_saved_business_query_model.py
+  - tests/test_migrations.py
+must_not_touch:
+  - fondant/
+  - alembic/
+  - .env
+requirements:
+  - Run or document focused regression validation for table mode, paste mode, latest-common-year, per-ISIN execution, saved-query reload, direct run, and CSV export.
+  - Add narrowly scoped tests only if a regression gap is found.
+  - Document any manual/browser QA gaps.
+non_goals:
+  - No product feature changes unless required to fix a validation failure.
+acceptance_criteria:
+  - Readiness note captures validation evidence and residual risks.
+  - Relevant tests pass.
+manual_verification_required: true
+manual_verification_steps:
+  - Human or planner reviews whether browser visual QA is needed before merge.
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py tests/test_saved_business_query_model.py tests/test_migrations.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: This workflow touches several BusinessQuery surfaces and needs regression confidence.
+user_or_operator_outcome: Users get the new workflow without breaking saved queries or exports.
+design_concept: Validate behavior before final handoff.
+architecture_boundary: Tests and validation documentation.
+success_signal: Readiness note plus passing focused tests.
+tradeoffs_or_constraints: Browser QA may need separate human confirmation.
+

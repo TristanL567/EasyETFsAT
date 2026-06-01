@@ -1,0 +1,41 @@
+ticket_id: BQ6-002
+dispatched_by: master-planner
+goal: Add BusinessQuery backend position input support while preserving global amount fallback.
+dependencies:
+  - BQ6-001 approved
+allowed_areas:
+  - fondant/business_query.py
+  - tests/test_business_query_service.py
+must_not_touch:
+  - fondant/api/
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Add a structured position concept with ISIN and amount.
+  - Preserve existing BusinessQueryInput behavior when positions are absent.
+  - Validate position ISINs and amounts using current whitelist/safety rules.
+  - Reject conflicting ISIN sets when positions and isins disagree.
+  - Apply each row's position amount to matching result rows.
+non_goals:
+  - No GUI changes.
+  - No saved-query persistence.
+  - No latest-common-year resolver yet.
+acceptance_criteria:
+  - Existing global amount tests still pass.
+  - New tests prove two ISINs can use different amounts.
+  - Invalid position inputs are rejected before SQL execution.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Backend support is required before the GUI can safely submit per-ISIN amounts.
+user_or_operator_outcome: Query results calculate each ISIN using the amount entered for that ISIN.
+design_concept: Positions are structured data, not raw SQL or free-form parsing.
+architecture_boundary: BusinessQuery service and service tests only.
+success_signal: Service tests show mixed amounts in one query.
+tradeoffs_or_constraints: Keep old saved queries and old callers compatible.
+

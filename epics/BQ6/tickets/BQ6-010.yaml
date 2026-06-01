@@ -1,0 +1,41 @@
+ticket_id: BQ6-010
+dispatched_by: master-planner
+goal: Create final BQ6 handoff for per-ISIN BusinessQuery amount implementation.
+dependencies:
+  - BQ6-009 approved
+allowed_areas:
+  - Documentation/Validation/BQ6-010_PER_ISIN_AMOUNT_FINAL_HANDOFF.md
+must_not_touch:
+  - fondant/
+  - alembic/
+  - tests/
+  - scripts/
+  - .env
+requirements:
+  - Summarize BQ6-001 through BQ6-009 outcomes.
+  - Document final user flow.
+  - Document migration requirements, if any.
+  - Document validation evidence, known limitations, and recommended follow-ups.
+  - State deployment/readiness notes for Render if migrations were added.
+non_goals:
+  - No code changes.
+  - No schema changes.
+  - No behavior changes.
+acceptance_criteria:
+  - Handoff is readable standalone.
+  - Handoff names per-ISIN amounts, paste mode, latest common available year, saved-query persistence, and validation evidence.
+manual_verification_required: true
+manual_verification_steps:
+  - Human reviews final handoff before merge gate.
+verification_commands:
+  - rg -n "BQ6-001|BQ6-009|per-ISIN|paste|latest common|saved-query|migration|Render|known limitations|follow-up" Documentation/Validation/BQ6-010_PER_ISIN_AMOUNT_FINAL_HANDOFF.md
+  - git diff --check
+  - git status --short --branch --untracked-files=all
+completion_report_required: true
+business_context: The epic needs a clear operator handoff after a broad workflow change.
+user_or_operator_outcome: The human can decide merge/deployment with clear evidence.
+design_concept: Final documentation only.
+architecture_boundary: Documentation only.
+success_signal: Handoff accepted at merge gate.
+tradeoffs_or_constraints: Do not add late implementation changes in the handoff ticket.
+

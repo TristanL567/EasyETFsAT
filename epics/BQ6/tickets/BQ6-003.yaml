@@ -1,0 +1,39 @@
+ticket_id: BQ6-003
+dispatched_by: master-planner
+goal: Implement latest common available tax-year resolution for BusinessQuery inputs.
+dependencies:
+  - BQ6-002 approved
+allowed_areas:
+  - fondant/business_query.py
+  - tests/test_business_query_service.py
+must_not_touch:
+  - fondant/api/
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Add a tax-year filter option for most recent common available year.
+  - Resolve it to the maximum TAXYEA present for every submitted ISIN before executing the data query.
+  - Return a clear structured no-common-year result or validation error according to BQ6-001.
+  - Preserve existing explicit year and all-years behavior.
+non_goals:
+  - No GUI changes.
+  - No saved-query persistence changes.
+  - No migration.
+acceptance_criteria:
+  - Tests cover common latest year, missing common year, explicit year, and all-years behavior.
+  - Query execution remains fixed to whitelisted V2_TAXDATHOMCCY access.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Users need the latest year that is comparable across all selected ISINs.
+user_or_operator_outcome: Users can avoid manually checking tax-year overlap before running a query.
+design_concept: Latest-common-year is a controlled tax-year filter, not a broad query mode.
+architecture_boundary: BusinessQuery service only.
+success_signal: Tests prove only years available for every ISIN qualify.
+tradeoffs_or_constraints: Avoid fallback to partially available latest years.
+
