@@ -3468,9 +3468,20 @@ async def test_documentation_page_renders_authenticated_help_content(
         "Data for ISIN {ISIN} is not available for the selected year."
         in response.text
     )
-    assert "Use Add New Query to enter ISINs, run a query, and save" in response.text
-    assert "Use Queries to load, edit, and group saved queries." in response.text
-    assert "replace or paste the ISINs you want to review, then rerun" in response.text
+    assert "Select one or more tax fields when building a BusinessQuery." in response.text
+    assert "K11 - AG Ertraege" in response.text
+    assert (
+        "Use Add New Query to enter ISINs, select tax fields, run a query, "
+        "and save a reusable rule."
+    ) in response.text
+    assert (
+        "Use Queries to run saved queries directly with their default ISINs, "
+        "or Load and Edit existing rules."
+    ) in response.text
+    assert (
+        "Use Group BusinessQuery to create named groups, then assign saved "
+        "queries to those groups while editing."
+    ) in response.text
     assert "amount multiplier" in response.text
     assert "CSV exports include" in response.text
     assert "original/home currency values, EUR values" in response.text
