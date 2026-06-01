@@ -312,7 +312,7 @@
                         <td>{{ format_business_query_decimal_3(row.amount_multiplier) }}</td>
                         <td>{{ format_business_query_decimal_3(row.calculated_eur_value) }}</td>
                         <td>
-                          <span class="numeric-value">{{ row.fx_rate if row.fx_rate is not none else "-" }}</span>
+                          <span class="numeric-value">{{ format_business_query_decimal_4(row.fx_rate) }}</span>
                           <span class="secondary-value">{{ row.fx_date if row.fx_date is not none else row.report_date if row.report_date is not none else "-" }}</span>
                         </td>
                       </tr>
@@ -609,7 +609,7 @@
                         <td>{{ format_business_query_decimal_3(row.amount_multiplier) }}</td>
                         <td>{{ format_business_query_decimal_3(row.calculated_eur_value) }}</td>
                         <td>
-                          <span class="numeric-value">{{ row.fx_rate if row.fx_rate is not none else "-" }}</span>
+                          <span class="numeric-value">{{ format_business_query_decimal_4(row.fx_rate) }}</span>
                           <span class="secondary-value">{{ row.fx_date if row.fx_date is not none else row.report_date if row.report_date is not none else "-" }}</span>
                         </td>
                       </tr>

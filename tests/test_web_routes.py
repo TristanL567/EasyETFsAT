@@ -777,6 +777,7 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
                     subcategory_key="business_bv_with_option",
                     tax_year_filter="2025",
                     amount=Decimal("1000.00"),
+                    updated_at=datetime(2026, 1, 2, 3, 4, 5, 678901),
                 ),
                 BQSAVED(
                     owner_username="other-user",
@@ -785,6 +786,7 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
                     subcategory_key="stiftung",
                     tax_year_filter="all_available_years",
                     amount=Decimal("500.00"),
+                    updated_at=datetime(2026, 1, 3, 4, 5, 6, 789012),
                 ),
             ]
         )
@@ -814,6 +816,9 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
     assert "<td>business</td>" in response.text
     assert "<td>BV mit Option</td>" in response.text
     assert "<td>2025</td>" in response.text
+    assert "<td>1000.00</td>" in response.text
+    assert "<td>2026-01-02 03:04</td>" in response.text
+    assert "2026-01-02 03:04:05" not in response.text
     assert '<th scope="col">Actions</th>' in response.text
     assert '<h3 id="saved-query-group-ungrouped">Ungrouped</h3>' in response.text
     assert "/app/business-query/queries/" in response.text
@@ -847,6 +852,7 @@ async def test_business_query_queries_groups_saved_queries_by_group(
                     subcategory_key="business_all",
                     tax_year_filter="2025",
                     amount=Decimal("100.00"),
+                    updated_at=datetime(2026, 2, 3, 4, 5, 6, 123456),
                 ),
                 BQSAVED(
                     owner_username="admin",
@@ -855,6 +861,7 @@ async def test_business_query_queries_groups_saved_queries_by_group(
                     subcategory_key="natural_person_all",
                     tax_year_filter="all_available_years",
                     amount=Decimal("200.00"),
+                    updated_at=datetime(2026, 2, 4, 5, 6, 7, 123456),
                 ),
             ]
         )
@@ -878,6 +885,10 @@ async def test_business_query_queries_groups_saved_queries_by_group(
     assert response.text.index('<h3 id="saved-query-group-ungrouped">Ungrouped</h3>') < (
         response.text.index("<td>Loose rule</td>")
     )
+    assert "<td>100.00</td>" in response.text
+    assert "<td>200.00</td>" in response.text
+    assert "<td>2026-02-03 04:05</td>" in response.text
+    assert "<td>2026-02-04 05:06</td>" in response.text
 
 
 @pytest.mark.asyncio
@@ -1652,7 +1663,8 @@ async def test_saved_business_query_listing_reflects_edited_values(
     assert "<td>business</td>" in list_response.text
     assert "<td>BV ohne Option</td>" in list_response.text
     assert "<td>2025</td>" in list_response.text
-    assert "<td>300.5000000000</td>" in list_response.text
+    assert "<td>300.50</td>" in list_response.text
+    assert "<td>300.5000000000</td>" not in list_response.text
     assert '<h3 id="saved-query-group-' in list_response.text
     assert ">Edited group</h3>" in list_response.text
     assert "Before list edit" not in list_response.text
@@ -1930,8 +1942,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<td>10.000</td>" in response.text
     assert "<td>1000.500</td>" in response.text
     assert "<td>10005.000</td>" in response.text
-    # BQ3-001 formats result values only; FX remains at existing raw precision.
-    assert "1.0000000000" in response.text
+    assert '<span class="numeric-value">1.0000</span>' in response.text
+    assert "1.0000000000" not in response.text
     assert "2025-06-15" in response.text
     assert 'formaction="/app/business-query/export"' in response.text
     assert "Export CSV" in response.text
@@ -2189,7 +2201,7 @@ async def test_business_query_result_rows_render_when_tax_field_metadata_is_miss
 
 
 @pytest.mark.asyncio
-async def test_business_query_result_page_formats_numeric_values_to_three_decimals(
+async def test_business_query_result_page_formats_numeric_values_for_display(
     web_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2247,8 +2259,8 @@ async def test_business_query_result_page_formats_numeric_values_to_three_decima
     assert "<dd>10.124</dd>" in response.text
     assert response.text.count("<td>10.000</td>") == 2
     assert response.text.count("<td>10.124</td>") == 3
-    # FX rate is intentionally left with existing raw precision in BQ3-001.
-    assert "1.2345678900" in response.text
+    assert '<span class="numeric-value">1.2346</span>' in response.text
+    assert "1.2345678900" not in response.text
 
 
 @pytest.mark.asyncio
@@ -2416,7 +2428,8 @@ async def test_business_query_missing_year_messages_render_without_hiding_valid_
     assert "<td>20.000</td>" in response.text
     assert "<td>9.615</td>" in response.text
     assert "<td>19.231</td>" in response.text
-    assert "1.0400000000" in response.text
+    assert '<span class="numeric-value">1.0400</span>' in response.text
+    assert "1.0400000000" not in response.text
     assert "2025-06-15" in response.text
 
 

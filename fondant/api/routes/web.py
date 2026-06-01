@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import time
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from io import StringIO
 from pathlib import Path
@@ -398,10 +398,30 @@ def _format_business_query_decimal_3(value: object) -> str:
     return f"{decimal_value.quantize(Decimal('0.001'), rounding=ROUND_HALF_UP):.3f}"
 
 
+def _format_business_query_decimal_4(value: object) -> str:
+    if value is None:
+        return "-"
+    decimal_value = Decimal(str(value))
+    return f"{decimal_value.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP):.4f}"
+
+
+def _format_business_query_amount_2(value: object) -> str:
+    if value is None:
+        return "-"
+    decimal_value = Decimal(str(value))
+    return f"{decimal_value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):.2f}"
+
+
 def _format_optional_timestamp(value: object) -> str:
     if value is None:
         return "-"
-    return str(value)
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M")
+    timestamp_text = str(value)
+    try:
+        return datetime.fromisoformat(timestamp_text).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return timestamp_text
 
 
 async def _saved_business_queries(
@@ -439,7 +459,7 @@ async def _saved_business_queries(
             "tax_year_filter": _format_business_query_tax_year_filter(
                 saved_query.tax_year_filter
             ),
-            "amount": str(saved_query.amount),
+            "amount": _format_business_query_amount_2(saved_query.amount),
             "group_id": str(saved_query.group_id or ""),
             "group_name": group_names.get(saved_query.group_id or 0, "Ungrouped"),
             "updated_at": _format_optional_timestamp(saved_query.updated_at),
@@ -765,6 +785,7 @@ def _render_app_shell(
             "business_query_tax_year_options": BUSINESS_QUERY_TAX_YEAR_OPTIONS,
             "business_query_tax_field_metadata": BUSINESS_QUERY_TAX_FIELD_METADATA,
             "format_business_query_decimal_3": _format_business_query_decimal_3,
+            "format_business_query_decimal_4": _format_business_query_decimal_4,
             "business_query_form": business_query_form or _empty_business_query_form(),
             "business_query_errors": business_query_errors or {},
             "business_query_status": business_query_status,
