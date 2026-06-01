@@ -345,6 +345,18 @@ def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQu
     )
 
 
+def _business_query_input_from_saved_query(saved_query: BQSAVED) -> BusinessQueryInput:
+    return BusinessQueryInput(
+        query_name=saved_query.query_name,
+        isins=tuple(saved_query.default_isins or ()),
+        legal_entity_type=saved_query.legal_entity_type,
+        subcategory_key=saved_query.subcategory_key,
+        tax_year_filter=saved_query.tax_year_filter,
+        tax_fields=tuple(saved_query.selected_tax_fields or BUSINESS_QUERY_DEFAULT_TAX_FIELDS),
+        amount_multiplier=saved_query.amount,
+    )
+
+
 def _business_query_result_to_csv(result: BusinessQueryResult) -> str:
     output = StringIO()
     writer = csv.DictWriter(output, fieldnames=BUSINESS_QUERY_CSV_HEADERS, lineterminator="\n")
@@ -889,6 +901,65 @@ async def app_business_query_queries(
     return _render_app_shell(
         request,
         "business-query-queries",
+        saved_business_queries=saved_queries,
+        business_query_group_options=group_options,
+        grouped_saved_business_queries=_group_saved_business_queries(
+            saved_queries,
+            group_options,
+            selected_group_id,
+        ),
+        selected_business_query_group_id=selected_group_id,
+    )
+
+
+@router.post("/app/business-query/queries/{saved_query_id}/run", response_class=HTMLResponse)
+async def run_saved_business_query(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    saved_query_id: int,
+) -> HTMLResponse:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    saved_query = await _saved_business_query_for_owner(session, username, saved_query_id)
+    if saved_query is None:
+        raise HTTPException(status_code=404, detail="Saved query not found")
+
+    form = await request.form()
+    selected_group_id = str(form.get("group_id", "")).strip()
+    result = None
+    errors: dict[str, str] = {}
+    status = ""
+    if saved_query.default_isins:
+        result = await execute_business_query(
+            session,
+            _business_query_input_from_saved_query(saved_query),
+        )
+        status = "Saved query ran using its default ISINs."
+    else:
+        errors["saved_query_run"] = (
+            "This saved query has no default ISINs. Load or edit it and add ISINs before running."
+        )
+
+    group_options = await _business_query_group_options(session, username)
+    if selected_group_id and selected_group_id != "ungrouped":
+        selected_group_id = (
+            selected_group_id
+            if any(group["id"] == selected_group_id for group in group_options)
+            else ""
+        )
+    saved_queries = await _saved_business_queries(
+        session,
+        username,
+        selected_group_id=selected_group_id,
+    )
+    return _render_app_shell(
+        request,
+        "business-query-queries",
+        business_query_status=status,
+        business_query_errors=errors,
+        business_query_result=result,
         saved_business_queries=saved_queries,
         business_query_group_options=group_options,
         grouped_saved_business_queries=_group_saved_business_queries(

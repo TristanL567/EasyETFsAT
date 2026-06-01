@@ -14,3 +14,5 @@
 | 2026-05-31T22:27:52+02:00 | BQ4-006 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web/model/service tests, ruff, diff check. | null |
 | 2026-05-31T22:28:31+02:00 | BQ4-007 | dispatched | automatic_dispatch | BQ4-007 is not a human checkpoint; dispatching BusinessQuery subgroup separation ticket after BQ4-006 commit 9c04264. | 9c04264 |
 | 2026-05-31T22:35:15+02:00 | BQ4-007 | validator_approved | approved_for_commit | Master-agent reported validator approval; planner validation passed: web route tests, ruff, diff check. | null |
+| 2026-05-31T22:35:55+02:00 | BQ4-008 | dispatched | human_approved_dispatch | Human instructed the planner to continue implementing the remaining epic tickets through AEGIS; dispatching direct saved-query run ticket after BQ4-007 commit 227b751. | 227b751 |
+| 2026-06-01T07:19:57+02:00 | BQ4-008 | validator_approved | approved_for_commit | Master-agent partial work was recovered and completed; planner validation passed: web/service tests, ruff, diff check. | null |

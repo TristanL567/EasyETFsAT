@@ -496,6 +496,103 @@
                 </select>
                 <button class="secondary-action" type="submit">Apply</button>
               </form>
+              {% if business_query_status %}
+              <p class="form-success">{{ business_query_status }}</p>
+              {% endif %}
+              {% if business_query_errors.saved_query_run %}
+              <p class="field-error">{{ business_query_errors.saved_query_run }}</p>
+              {% endif %}
+              {% if business_query_result is not none %}
+              <div class="result-panel" aria-live="polite">
+                <h2>Query results</h2>
+                <dl>
+                  <div>
+                    <dt>Query name</dt>
+                    <dd>{{ business_query_result.query.query_name }}</dd>
+                  </div>
+                  <div>
+                    <dt>ISINs</dt>
+                    <dd>{{ business_query_result.query.isins | join(", ") }}</dd>
+                  </div>
+                  <div>
+                    <dt>Legal entity type</dt>
+                    <dd>{{ business_query_result.query.legal_entity_type }}</dd>
+                  </div>
+                  <div>
+                    <dt>Subcategory</dt>
+                    <dd>{{ business_query_subcategory_labels[business_query_result.query.subcategory_key] }}</dd>
+                  </div>
+                  <div>
+                    <dt>Selected tax year</dt>
+                    <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
+                  </div>
+                  <div>
+                    <dt>Tax fields</dt>
+                    <dd>
+                      {% for field_code in business_query_result.query.tax_fields %}
+                      {% set tax_field_metadata = business_query_tax_field_metadata.get(field_code) %}
+                      {{ field_code }}{% if tax_field_metadata %} - {{ tax_field_metadata.name_de }}{% endif %}{% if not loop.last %}, {% endif %}
+                      {% endfor %}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Amount</dt>
+                    <dd>{{ format_business_query_decimal_3(business_query_result.query.amount_multiplier) }}</dd>
+                  </div>
+                </dl>
+                {% if business_query_result.missing_year_messages %}
+                <div class="availability-messages" role="status" aria-label="Selected-year availability">
+                  {% for message in business_query_result.missing_year_messages %}
+                  <p>{{ message }}</p>
+                  {% endfor %}
+                </div>
+                {% endif %}
+                {% if business_query_result.is_empty %}
+                <p class="empty-state">No tax rows matched the saved query default ISINs.</p>
+                {% else %}
+                <div class="result-table-wrap">
+                  <table class="result-table business-query-results-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">ISIN</th>
+                        <th scope="col">Tax year</th>
+                        <th scope="col">Tax field</th>
+                        <th scope="col">Legal entity category</th>
+                        <th scope="col">Original/home currency</th>
+                        <th scope="col">Original/home base value</th>
+                        <th scope="col">Original/home calculated value</th>
+                        <th scope="col">EUR base value</th>
+                        <th scope="col">Multiplier</th>
+                        <th scope="col">EUR calculated value</th>
+                        <th scope="col">FX rate/date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for row in business_query_result.rows %}
+                      {% set tax_field_metadata = business_query_tax_field_metadata.get(row.tax_field_code) %}
+                      <tr>
+                        <td>{{ row.isin }}</td>
+                        <td>{{ row.tax_year if row.tax_year is not none else "-" }}</td>
+                        <td>{{ row.tax_field_code }} - {{ row.tax_field_label }}</td>
+                        <td>{{ row.legal_entity_category }}</td>
+                        <td>{{ row.home_currency_code or row.original_currency_code or row.fund_currency or "-" }}</td>
+                        <td>{{ format_business_query_decimal_3(row.base_home_currency_value) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.calculated_home_currency_value) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.base_eur_value) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.amount_multiplier) }}</td>
+                        <td>{{ format_business_query_decimal_3(row.calculated_eur_value) }}</td>
+                        <td>
+                          <span class="numeric-value">{{ row.fx_rate if row.fx_rate is not none else "-" }}</span>
+                          <span class="secondary-value">{{ row.fx_date if row.fx_date is not none else row.report_date if row.report_date is not none else "-" }}</span>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+                {% endif %}
+              </div>
+              {% endif %}
               {% if grouped_saved_business_queries %}
               {% for query_group in grouped_saved_business_queries %}
               <section class="saved-query-group" aria-labelledby="saved-query-group-{{ query_group.id }}">
@@ -528,6 +625,10 @@
                         <td>{{ saved_query.updated_at }}</td>
                         <td>
                           <div class="table-actions">
+                            <form method="post" action="/app/business-query/queries/{{ saved_query.id }}/run">
+                              <input type="hidden" name="group_id" value="{{ selected_business_query_group_id }}">
+                              <button class="secondary-action" type="submit">Run</button>
+                            </form>
                             <form method="get" action="/app/business-query/saved/{{ saved_query.id }}/load">
                               <button class="secondary-action" type="submit">Load</button>
                             </form>

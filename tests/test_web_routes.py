@@ -1641,6 +1641,176 @@ async def test_saved_business_query_listing_reflects_edited_values(
 
 
 @pytest.mark.asyncio
+async def test_owner_can_run_saved_business_query_from_queries_page(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Direct run rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_legal_person",
+            tax_year_filter="2025",
+            amount=Decimal("42.50"),
+            default_isins=["LU1681044993"],
+            selected_tax_fields=["K11", "K62"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    service_calls: list[BusinessQueryInput] = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append(query)
+        return BusinessQueryResult(
+            query=query,
+            rows=(
+                BusinessQueryResultRow(
+                    query_name=query.query_name,
+                    isin="LU1681044993",
+                    tax_year=2025,
+                    oekb_report_id=1001,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.0000000000"),
+                    legal_entity_category="BVJ",
+                    tax_field_code="K11",
+                    tax_field_label="AG Ertraege",
+                    base_eur_value=Decimal("1.2500000000"),
+                    amount_multiplier=query.amount_multiplier,
+                    calculated_eur_value=Decimal("53.1250000000"),
+                    original_currency_code="EUR",
+                    home_currency_code="EUR",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=Decimal("1.2500000000"),
+                    calculated_home_currency_value=Decimal("53.1250000000"),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(f"/app/business-query/queries/{saved_query_id}/run")
+
+    assert response.status_code == 200
+    assert "Saved query ran using its default ISINs." in response.text
+    assert "<h2>Query results</h2>" in response.text
+    assert "<dd>Direct run rule</dd>" in response.text
+    assert "<dd>LU1681044993</dd>" in response.text
+    assert "<dd>BV jur. Person</dd>" in response.text
+    assert "K11 - AG Ertraege" in response.text
+    assert "<td>LU1681044993</td>" in response.text
+    assert "<td>BVJ</td>" in response.text
+    assert ">Run</button>" in response.text
+    assert ">Load</button>" in response.text
+    assert ">Edit</a>" in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0]
+    assert query.query_name == "Direct run rule"
+    assert query.isins == ("LU1681044993",)
+    assert query.legal_entity_type == "business"
+    assert query.subcategory_key == "business_bv_legal_person"
+    assert query.tax_year_filter == "2025"
+    assert query.tax_fields == ("K11", "K62")
+    assert query.amount_multiplier == Decimal("42.50")
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_run_saved_business_query_by_id(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="other-user",
+            query_name="Other direct run rule",
+            legal_entity_type="business",
+            subcategory_key="business_all",
+            tax_year_filter="2025",
+            amount=Decimal("100.00"),
+            default_isins=["LU1681044993"],
+            selected_tax_fields=["K40"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("non-owner saved query must not run")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(f"/app/business-query/queries/{saved_query_id}/run")
+
+    assert response.status_code == 404
+    assert "Other direct run rule" not in response.text
+    assert "LU1681044993" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_saved_business_query_run_without_default_isins_shows_friendly_error(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="No default ISIN rule",
+            legal_entity_type="natural person",
+            subcategory_key="natural_person_all",
+            tax_year_filter="all_available_years",
+            amount=Decimal("100.00"),
+            default_isins=None,
+            selected_tax_fields=["K40"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("saved query without default ISINs must not run")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(f"/app/business-query/queries/{saved_query_id}/run")
+
+    assert response.status_code == 200
+    assert (
+        "This saved query has no default ISINs. Load or edit it and add ISINs before running."
+        in response.text
+    )
+    assert "<td>No default ISIN rule</td>" in response.text
+    assert "<h2>Query results</h2>" not in response.text
+    assert "No tax rows matched the saved query default ISINs." not in response.text
+
+
+@pytest.mark.asyncio
 async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     web_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
