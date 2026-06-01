@@ -20,3 +20,5 @@
 | 2026-06-01T07:22:57+02:00 | BQ4-009 | validator_approved | approved_for_commit | Planner validation passed: web route tests, ruff, diff check. Browser manual QA was not available in this run. | null |
 | 2026-06-01T07:24:57+02:00 | BQ4-010 | dispatched | automatic_dispatch | BQ4-010 is not a human checkpoint; dispatching in-app documentation update after BQ4-009 commit 39c652d. | 39c652d |
 | 2026-06-01T07:24:57+02:00 | BQ4-010 | validator_approved | approved_for_commit | Planner validation passed: web route tests, ruff, diff check. | null |
+| 2026-06-01T07:26:45+02:00 | BQ4-011 | dispatched | automatic_dispatch | BQ4-011 is not a human checkpoint; dispatching regression readiness ticket after BQ4-010 commit a4a7b1a. | a4a7b1a |
+| 2026-06-01T07:26:45+02:00 | BQ4-011 | validator_approved | approved_for_commit | Planner validation passed: relevant regression tests, ruff, diff check. Browser visual QA remains documented as not performed. | null |
