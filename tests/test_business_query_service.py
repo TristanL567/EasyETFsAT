@@ -10,6 +10,7 @@ from sqlalchemy.sql import Select
 
 from fondant.business_query import (
     BusinessQueryInput,
+    BusinessQueryPosition,
     BusinessQueryValidationError,
     execute_business_query,
 )
@@ -251,6 +252,117 @@ async def test_business_query_maps_business_suffixes_for_multiple_isins() -> Non
     assert result.rows[3].isin == "LU1681044993"
     assert result.rows[3].base_eur_value == Decimal("1.2500000000")
     assert result.rows[3].calculated_eur_value == Decimal("5.0000000000")
+
+
+@pytest.mark.asyncio
+async def test_business_query_applies_position_amounts_by_matching_isin() -> None:
+    rows = [
+        _view_row(TAXISN="IE00BMTX1Y45", TAXOKBIDN=1001, K40PVM=Decimal("10.0000000000")),
+        _view_row(TAXISN="LU1681044993", TAXOKBIDN=1002, K40PVM=Decimal("20.0000000000")),
+    ]
+    session = _FakeSession(rows)
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Position amounts",
+            isins=("IE00BMTX1Y45", "LU1681044993"),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("99"),
+            tax_fields=("K40",),
+            subcategory_key="natural_person_pa_with_option",
+            positions=(
+                BusinessQueryPosition(isin="ie00bmtx1y45", amount=Decimal("2")),
+                BusinessQueryPosition(isin="lu1681044993", amount=Decimal("3")),
+            ),
+        ),
+    )
+
+    assert result.query.isins == ("IE00BMTX1Y45", "LU1681044993")
+    assert result.query.positions == (
+        BusinessQueryPosition(isin="IE00BMTX1Y45", amount=Decimal("2")),
+        BusinessQueryPosition(isin="LU1681044993", amount=Decimal("3")),
+    )
+    assert [(row.isin, row.amount_multiplier, row.calculated_eur_value) for row in result.rows] == [
+        ("IE00BMTX1Y45", Decimal("2"), Decimal("20.0000000000")),
+        ("LU1681044993", Decimal("3"), Decimal("60.0000000000")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_business_query_positions_can_provide_isin_filter_without_legacy_isins() -> None:
+    session = _FakeSession([_view_row(TAXISN="LU1681044993", K61BVM=Decimal("1.2500000000"))])
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Position-only ISINs",
+            isins=(),
+            legal_entity_type="business",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K61",),
+            subcategory_key="business_bv_with_option",
+            positions=(BusinessQueryPosition(isin="lu1681044993", amount=Decimal("4")),),
+        ),
+    )
+
+    assert session.statement is not None
+    compiled_sql = _compiled_sql(session.statement)
+    assert '"TAXISN" IN (\'LU1681044993\')' in compiled_sql
+    assert result.query.isins == ("LU1681044993",)
+    assert result.rows[0].amount_multiplier == Decimal("4")
+    assert result.rows[0].calculated_eur_value == Decimal("5.0000000000")
+
+
+@pytest.mark.asyncio
+async def test_business_query_rejects_conflicting_isin_and_position_sets_before_sql() -> None:
+    session = _FakeSession([])
+
+    with pytest.raises(BusinessQueryValidationError, match="positions and isins"):
+        await execute_business_query(
+            session,
+            BusinessQueryInput(
+                query_name="Conflicting positions",
+                isins=("IE00BMTX1Y45",),
+                legal_entity_type="natural person",
+                amount_multiplier=Decimal("1"),
+                positions=(BusinessQueryPosition(isin="LU1681044993", amount=Decimal("4")),),
+            ),
+        )
+
+    assert session.statement is None
+
+
+@pytest.mark.parametrize(
+    "positions",
+    [
+        (BusinessQueryPosition(isin="not-an-isin", amount=Decimal("1")),),
+        (BusinessQueryPosition(isin="IE00BMTX1Y45", amount=Decimal("0")),),
+        (
+            BusinessQueryPosition(isin="IE00BMTX1Y45", amount=Decimal("1")),
+            BusinessQueryPosition(isin="ie00bmtx1y45", amount=Decimal("2")),
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_business_query_rejects_invalid_positions_before_sql(
+    positions: tuple[BusinessQueryPosition, ...],
+) -> None:
+    session = _FakeSession([])
+
+    with pytest.raises(BusinessQueryValidationError):
+        await execute_business_query(
+            session,
+            BusinessQueryInput(
+                query_name="Bad positions",
+                isins=(),
+                legal_entity_type="business",
+                amount_multiplier=Decimal("1"),
+                positions=positions,
+            ),
+        )
+
+    assert session.statement is None
 
 
 @pytest.mark.asyncio

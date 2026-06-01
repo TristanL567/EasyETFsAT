@@ -101,6 +101,12 @@ class BusinessQueryValidationError(ValueError):
 
 
 @dataclass(frozen=True)
+class BusinessQueryPosition:
+    isin: str
+    amount: Decimal
+
+
+@dataclass(frozen=True)
 class BusinessQueryInput:
     query_name: str
     isins: tuple[str, ...]
@@ -112,6 +118,7 @@ class BusinessQueryInput:
     year_to: int | None = None
     subcategory_key: str | None = None
     tax_year_filter: str | int | None = None
+    positions: tuple[BusinessQueryPosition, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -162,7 +169,13 @@ def validate_business_query_input(query: BusinessQueryInput) -> BusinessQueryInp
     if not query_name:
         raise BusinessQueryValidationError("query_name is required")
 
+    positions = _normalize_positions(query.positions)
     isins = _normalize_isins(query.isins)
+    if positions:
+        position_isins = tuple(position.isin for position in positions)
+        if isins and set(isins) != set(position_isins):
+            raise BusinessQueryValidationError("positions and isins must reference the same ISIN set")
+        isins = position_isins
     if not isins:
         raise BusinessQueryValidationError("at least one ISIN is required")
 
@@ -193,6 +206,7 @@ def validate_business_query_input(query: BusinessQueryInput) -> BusinessQueryInp
         year=year,
         year_from=year_from,
         year_to=year_to,
+        positions=positions,
     )
 
 
@@ -259,13 +273,35 @@ def _normalize_isins(raw_isins: tuple[str, ...]) -> tuple[str, ...]:
     normalized_isins: list[str] = []
     seen: set[str] = set()
     for raw_isin in raw_isins:
-        isin = raw_isin.strip().upper()
-        if not ISIN_PATTERN.fullmatch(isin):
-            raise BusinessQueryValidationError("invalid ISIN")
+        isin = _normalize_single_isin(raw_isin)
         if isin not in seen:
             normalized_isins.append(isin)
             seen.add(isin)
     return tuple(normalized_isins)
+
+
+def _normalize_positions(raw_positions: tuple[BusinessQueryPosition, ...]) -> tuple[BusinessQueryPosition, ...]:
+    normalized_positions: list[BusinessQueryPosition] = []
+    seen: set[str] = set()
+    for raw_position in raw_positions:
+        isin = _normalize_single_isin(raw_position.isin)
+        if isin in seen:
+            raise BusinessQueryValidationError("duplicate position ISIN")
+
+        amount = _normalize_decimal(raw_position.amount, "position amount")
+        if amount <= 0:
+            raise BusinessQueryValidationError("position amount must be positive")
+
+        normalized_positions.append(BusinessQueryPosition(isin=isin, amount=amount))
+        seen.add(isin)
+    return tuple(normalized_positions)
+
+
+def _normalize_single_isin(raw_isin: str) -> str:
+    isin = raw_isin.strip().upper()
+    if not ISIN_PATTERN.fullmatch(isin):
+        raise BusinessQueryValidationError("invalid ISIN")
+    return isin
 
 
 def _normalize_decimal(value: Decimal, field_name: str) -> Decimal:
@@ -418,10 +454,11 @@ def _result_row_from_mapping(
     home_column_name, eur_column_name = _amount_currency_column_names(column_name)
     base_home_currency_value = _decimal_or_none(source_row[home_column_name])
     base_eur_value = _decimal_or_none(source_row[eur_column_name])
+    amount_multiplier = _amount_multiplier_for_isin(query, str(source_row["TAXISN"]))
     calculated_home_currency_value = (
-        None if base_home_currency_value is None else base_home_currency_value * query.amount_multiplier
+        None if base_home_currency_value is None else base_home_currency_value * amount_multiplier
     )
-    calculated_eur_value = None if base_eur_value is None else base_eur_value * query.amount_multiplier
+    calculated_eur_value = None if base_eur_value is None else base_eur_value * amount_multiplier
     currency_code = source_row["FNDCCY"]
     fx_date = source_row["TAXMDT"]
     return BusinessQueryResultRow(
@@ -436,7 +473,7 @@ def _result_row_from_mapping(
         tax_field_code=field_code,
         tax_field_label=TAX_FIELD_LABELS[field_code],
         base_eur_value=base_eur_value,
-        amount_multiplier=query.amount_multiplier,
+        amount_multiplier=amount_multiplier,
         calculated_eur_value=calculated_eur_value,
         original_currency_code=currency_code,
         home_currency_code=currency_code,
@@ -444,6 +481,17 @@ def _result_row_from_mapping(
         base_home_currency_value=base_home_currency_value,
         calculated_home_currency_value=calculated_home_currency_value,
     )
+
+
+def _amount_multiplier_for_isin(query: BusinessQueryInput, isin: str) -> Decimal:
+    if not query.positions:
+        return query.amount_multiplier
+
+    normalized_isin = isin.upper()
+    for position in query.positions:
+        if position.isin == normalized_isin:
+            return position.amount
+    raise BusinessQueryValidationError("result row ISIN is not present in positions")
 
 
 def _decimal_or_none(value: object) -> Decimal | None:
