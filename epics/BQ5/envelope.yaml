@@ -1,0 +1,49 @@
+epic_id: BQ5
+goal: >
+  Improve BusinessQuery result readability, expose OeKB release dates, refine
+  display-only formatting, widen documentation, and define the next per-ISIN
+  notional workflow before implementation.
+branch: development
+base: main
+autonomy_policy: checkpointed
+human_checkpoint_tickets:
+  - BQ5-001
+  - BQ5-005
+epic_allowed_areas:
+  - epics/BQ5/
+  - epics/BQ4/ledger.md
+  - Documentation/Validation/
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+epic_must_not_touch:
+  - .env
+  - .env.example
+  - docker-compose.yml
+  - pyproject.toml
+  - README.md
+  - alembic/
+  - fondant/business_query.py
+  - fondant/db/models/
+  - fondant/config.py
+  - fondant/ingestion/
+  - fondant/oekb/
+  - fondant/ecb/
+  - scripts/
+  - easyetfsat.egg-info/
+  - .git/
+tickets:
+  - BQ5-001
+  - BQ5-002
+  - BQ5-003
+  - BQ5-004
+  - BQ5-005
+depends_on_epics:
+  - BQ4 merged to main at b26bd36 or later
+merge_policy:
+  strategy: fast-forward
+  target_base: main
+  requires_epic_validator: true
+  requires_human_approval: true
+

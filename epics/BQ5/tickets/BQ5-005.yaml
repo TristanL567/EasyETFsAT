@@ -1,0 +1,44 @@
+ticket_id: BQ5-005
+dispatched_by: master-planner
+goal: Produce the approved UX and architecture plan for multiple ISINs with different notional values.
+dependencies:
+  - BQ5-004 approved
+allowed_areas:
+  - Documentation/Validation/BQ5-005_PER_ISIN_NOTIONAL_UX_AND_ARCHITECTURE.md
+must_not_touch:
+  - fondant/
+  - alembic/
+  - tests/
+  - scripts/
+  - .env
+requirements:
+  - Design a visually appealing BusinessQuery input for multiple ISINs with different notional values, such as 10 shares, 5 shares, and 3 shares.
+  - Include both structured row-entry mode and paste-friendly mode.
+  - Define validation behavior for ISIN, amount, duplicates, blank rows, and mixed valid/invalid input.
+  - Define future backend shape for per-ISIN amounts while preserving the existing global amount fallback.
+  - Define saved-query persistence implications and whether a follow-up migration is needed.
+  - Include a human approval gate before implementation tickets for per-ISIN notional execution.
+non_goals:
+  - No code changes.
+  - No schema changes.
+  - No GUI implementation.
+  - No BusinessQuery service implementation.
+acceptance_criteria:
+  - Document is readable standalone and includes wireframe-level UI guidance.
+  - Document identifies concrete follow-up implementation tickets.
+  - Document explicitly preserves current global amount behavior unless users opt into per-ISIN values.
+manual_verification_required: true
+manual_verification_steps:
+  - Human reviews and approves the per-ISIN notional UX before implementation tickets are opened.
+verification_commands:
+  - rg -n "per-ISIN|notional|shares|paste|global amount|migration|human approval" Documentation/Validation/BQ5-005_PER_ISIN_NOTIONAL_UX_AND_ARCHITECTURE.md
+  - git diff --check
+  - git status --short --branch --untracked-files=all
+completion_report_required: true
+business_context: Different holdings per ISIN are necessary for realistic portfolio reviews.
+user_or_operator_outcome: Users understand and approve the future input workflow before core model changes.
+design_concept: A row-based editor with paste support, clear validation, and no raw SQL.
+architecture_boundary: Documentation only.
+success_signal: Human-approved UX plan can seed the next implementation epic or ticket set.
+tradeoffs_or_constraints: Implementation likely expands service input and saved-query persistence.
+

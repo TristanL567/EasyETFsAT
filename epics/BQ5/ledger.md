@@ -1,0 +1,4 @@
+| timestamp | ticket_id | event_type | decision | notes | commit_sha |
+| --- | --- | --- | --- | --- | --- |
+| 2026-06-01T17:22:09+02:00 | BQ5 | dispatched | epic_workspace_created | Planner created BQ5 epic and ticket envelopes after loading AEGIS-CORE materials. Visible Master-Agent dispatch is blocked until human provides/selects a visible chat because this runtime exposes only internal subagents. | null |
+| 2026-06-01T19:05:27+02:00 | BQ5-001 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ5-001; remediation fixed BQ5-005 scope wording; planner validation passed rg checks, diff check, and status review. | null |

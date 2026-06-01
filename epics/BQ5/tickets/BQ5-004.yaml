@@ -1,0 +1,42 @@
+ticket_id: BQ5-004
+dispatched_by: master-planner
+goal: Make the authenticated Documentation page wider and easier to scan.
+dependencies:
+  - BQ5-003 approved
+allowed_areas:
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/api/routes/web.py
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Increase usable width for the Documentation section and its tax field reference table.
+  - Preserve readable line lengths for explanatory paragraphs.
+  - Preserve table overflow on narrow screens.
+  - Do not change documentation content except minimal labels/classes needed for layout.
+non_goals:
+  - No BusinessQuery behavior changes.
+  - No tax field registry changes.
+  - No new documentation content beyond layout hooks if needed.
+acceptance_criteria:
+  - Documentation page has wider table layout on desktop.
+  - Mobile/narrow overflow remains controlled.
+  - Existing documentation tests still pass or are updated for new stable hooks.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Documentation is a primary user aid for tax field meaning.
+user_or_operator_outcome: Users can scan the tax field reference without immediate cramped wrapping.
+design_concept: Layout-only improvement, not a documentation rewrite.
+architecture_boundary: Template/CSS/tests only.
+success_signal: CSS and route tests verify the documentation section remains present and scannable.
+tradeoffs_or_constraints: Avoid making all portal pages excessively wide.
+

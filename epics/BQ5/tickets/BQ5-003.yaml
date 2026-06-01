@@ -1,0 +1,44 @@
+ticket_id: BQ5-003
+dispatched_by: master-planner
+goal: Apply display-only formatting for FX rates and saved/group query table values.
+dependencies:
+  - BQ5-002 approved
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Add or reuse template helper logic to display FX rates rounded to 4 decimals in the GUI.
+  - Preserve full FX precision for all calculations and service objects.
+  - Do not change CSV export precision unless a later ticket explicitly says so.
+  - In saved-query and group-related tables, display amount with 2 decimals.
+  - In saved-query and group-related tables, display updated timestamps as date plus hour/minute only, with no seconds or milliseconds.
+  - Apply formatting consistently wherever saved-query rows are listed.
+non_goals:
+  - No calculation changes.
+  - No database schema changes.
+  - No CSV export changes.
+acceptance_criteria:
+  - FX rate displays with 4 decimals in BusinessQuery result tables.
+  - Saved-query amount displays with 2 decimals.
+  - Updated timestamp displays without seconds or milliseconds.
+  - Tests prove display changes do not alter CSV precision.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: Display precision should be readable while preserving exact computations.
+user_or_operator_outcome: Users see clean rates, amounts, and timestamps without visual noise.
+design_concept: Formatting belongs at presentation boundaries only.
+architecture_boundary: Web route helper/template/tests only.
+success_signal: Tests assert rounded display strings and unchanged export behavior.
+tradeoffs_or_constraints: Use full Decimal values internally.
+

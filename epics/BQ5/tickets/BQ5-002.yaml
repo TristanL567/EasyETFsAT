@@ -1,0 +1,43 @@
+ticket_id: BQ5-002
+dispatched_by: master-planner
+goal: Widen BusinessQuery result layout and show OeKB release date in result descriptions.
+dependencies:
+  - BQ5-001 approved
+allowed_areas:
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/api/routes/web.py
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Make BusinessQuery result tables use more available horizontal page width before scrolling.
+  - Show OeKB release date in the Query results description using existing result row report_date data sourced from TAXMDT.
+  - If multiple release dates are present, show a clear compact representation rather than a misleading single date.
+  - Apply the change to both Add New Query results and direct saved-query Run results.
+  - Preserve mobile overflow behavior.
+non_goals:
+  - No database/view changes.
+  - No BusinessQuery service changes.
+  - No CSV changes.
+acceptance_criteria:
+  - Result summary renders OeKB release date information.
+  - Result tables have wider layout styling.
+  - Tests cover single and multiple release-date display behavior.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: OeKB release date helps users understand how current the tax data is.
+user_or_operator_outcome: Users see data release timing directly beside query context.
+design_concept: Add release-date context in the existing result summary, not as another wide table column.
+architecture_boundary: Web template/CSS/tests only.
+success_signal: Web tests prove TAXMDT-derived dates render in both result paths.
+tradeoffs_or_constraints: Avoid duplicating release date on every row unless later requested.
+
