@@ -1,0 +1,49 @@
+ticket_id: BQ6-004B
+dispatched_by: master-planner
+goal: Order BusinessQuery result rows by tax field before ISIN.
+dependencies:
+  - BQ6-004A approved
+allowed_areas:
+  - fondant/business_query.py
+  - tests/test_business_query_service.py
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Change BusinessQuery result row ordering so tax field is the primary grouping key.
+  - Preserve deterministic secondary ordering, such as ISIN, tax year, report id, and legal entity category.
+  - Rendered result tables and CSV export should naturally follow the same ordered service result rows.
+  - Preserve existing filters, calculations, per-ISIN positions, latest-common-year behavior, and missing-year behavior.
+non_goals:
+  - No GUI layout changes.
+  - No schema changes.
+  - No saved-query persistence changes.
+  - No tax field selection changes.
+acceptance_criteria:
+  - Service tests prove rows are ordered by tax field before ISIN.
+  - Web or CSV tests prove rendered/exported output follows the service row order if existing coverage does not already prove it.
+  - Existing BusinessQuery behavior remains covered.
+manual_verification_required: false
+manual_verification_steps: []
+verification_commands:
+  - py -3.10 -m pytest tests/test_business_query_service.py tests/test_web_routes.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: >
+  Users reviewing multiple ISINs want to compare the same tax field across
+  instruments before moving to the next field.
+user_or_operator_outcome: >
+  Results are easier to scan field-by-field instead of instrument-by-instrument.
+design_concept: >
+  Sort data presentation at the structured result-row layer so rendered tables
+  and CSV exports stay consistent.
+architecture_boundary: BusinessQuery service ordering and tests.
+success_signal: Tests show K11 rows for all ISINs appear before K61 rows, etc.
+tradeoffs_or_constraints: >
+  Do not change calculations or data selection, only deterministic row ordering.
+
