@@ -16,3 +16,4 @@
 | 2026-06-02T11:42:12+02:00 | BQ6-004B | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-004B; planner validation passed service/web tests, ruff, diff check, and scope review. | null |
 | 2026-06-02T12:26:39+02:00 | BQ6-005 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-005; planner validation passed web/service tests, ruff, diff check, and scope review. | null |
 | 2026-06-02T13:03:21+02:00 | BQ6-006 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-006; planner validation passed migration/model tests, alembic heads, ruff, diff check, and scope review. | null |
+| 2026-06-02T13:38:32+02:00 | BQ6-007 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-007; planner validation passed web/model/service tests, ruff, diff check, and scope review. Non-blocking wording note carried forward to documentation/guidance cleanup. | null |

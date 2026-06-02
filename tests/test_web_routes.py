@@ -826,6 +826,54 @@ async def test_authenticated_user_can_save_business_query_with_selected_tax_fiel
 
 
 @pytest.mark.asyncio
+async def test_authenticated_user_can_save_business_query_with_position_amounts(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/save",
+        content=urlencode(
+            [
+                ("query_name", "Position saved rule"),
+                ("position_input_mode", "table"),
+                ("position_isin", "ie00bmtx1y45"),
+                ("position_amount", "2"),
+                ("position_isin", "lu1681044993"),
+                ("position_amount", "3.5"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_legal_person"),
+                ("tax_year_filter", "2025"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "Saved query created." in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="2"' in response.text
+    assert 'value="LU1681044993"' in response.text
+    assert 'value="3.5"' in response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED))
+
+    assert saved_query is not None
+    assert saved_query.default_isins == ["IE00BMTX1Y45", "LU1681044993"]
+    assert saved_query.amount == Decimal("2.0000000000")
+    assert saved_query.ordered_positions == [
+        {"isin": "IE00BMTX1Y45", "amount": "2"},
+        {"isin": "LU1681044993", "amount": "3.5"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_business_query_save_allows_optional_default_isins(
     saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
 ) -> None:
@@ -859,6 +907,7 @@ async def test_business_query_save_allows_optional_default_isins(
     assert saved_query.default_isins is None
     assert saved_query.note is None
     assert saved_query.selected_tax_fields == ["K40", "K61", "K62"]
+    assert saved_query.ordered_positions is None
 
 
 @pytest.mark.asyncio
@@ -1321,6 +1370,47 @@ async def test_current_user_can_load_saved_business_query_with_structured_fields
 
 
 @pytest.mark.asyncio
+async def test_current_user_can_load_saved_business_query_with_position_amounts(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Loaded position rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_legal_person",
+            tax_year_filter="2025",
+            amount=Decimal("2.00"),
+            default_isins=["IE00BMTX1Y45", "LU1681044993"],
+            ordered_positions=[
+                {"isin": "IE00BMTX1Y45", "amount": "2"},
+                {"isin": "LU1681044993", "amount": "3.5"},
+            ],
+            selected_tax_fields=["K40"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
+
+    assert response.status_code == 200
+    assert "Saved query loaded." in response.text
+    assert 'value="Loaded position rule"' in response.text
+    assert "IE00BMTX1Y45, 2" in response.text
+    assert "LU1681044993, 3.5" in response.text
+    normalized_html = " ".join(response.text.split())
+    assert '<input id="tax-field-K40" name="tax_fields" type="checkbox" value="K40" checked >' in normalized_html
+
+
+@pytest.mark.asyncio
 async def test_loaded_saved_business_query_can_replace_isins_and_rerun_existing_post_flow(
     saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
     monkeypatch: pytest.MonkeyPatch,
@@ -1506,7 +1596,9 @@ async def test_saved_business_query_edit_form_prefills_all_saved_fields(
 
     assert response.status_code == 200
     assert 'value="Loaded edit rule"' in response.text
-    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert "IE00BMTX1Y45, 250.7500000000" in response.text
+    assert "LU1681044993, 250.7500000000" in response.text
+    assert response.text.count('value="250.7500000000"') >= 1
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="business_bv_legal_person" selected>BV jur. Person</option>' in response.text
     assert '<option value="2025" selected>2025</option>' in response.text
@@ -1518,6 +1610,74 @@ async def test_saved_business_query_edit_form_prefills_all_saved_fields(
     assert '<input id="edit-tax-field-K62" name="tax_fields" type="checkbox" value="K62" checked >' in normalized_html
     assert '<input id="edit-tax-field-K40" name="tax_fields" type="checkbox" value="K40" >' in normalized_html
     assert "Other user group" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_owner_can_edit_saved_business_query_position_amounts(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Original position edit rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_legal_person",
+            tax_year_filter="2025",
+            amount=Decimal("1.00"),
+            default_isins=["IE00BMTX1Y45"],
+            ordered_positions=[{"isin": "IE00BMTX1Y45", "amount": "1"}],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        f"/app/business-query/queries/{saved_query_id}/edit",
+        content=urlencode(
+            [
+                ("query_name", "Updated position edit rule"),
+                ("position_input_mode", "table"),
+                ("position_isin", "ie00bmtx1y45"),
+                ("position_amount", "2"),
+                ("position_isin", "lu1681044993"),
+                ("position_amount", "3.5"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_without_option"),
+                ("tax_year_filter", "2025"),
+                ("tax_fields_present", "1"),
+                ("tax_fields", "K11"),
+                ("note", "Updated position note"),
+                ("group_id", ""),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "Saved query updated." in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="2"' in response.text
+    assert 'value="LU1681044993"' in response.text
+    assert 'value="3.5"' in response.text
+
+    async with session_factory() as session:
+        saved_query = await session.scalar(select(BQSAVED).where(BQSAVED.id == saved_query_id))
+
+    assert saved_query is not None
+    assert saved_query.default_isins == ["IE00BMTX1Y45", "LU1681044993"]
+    assert saved_query.amount == Decimal("2.0000000000")
+    assert saved_query.ordered_positions == [
+        {"isin": "IE00BMTX1Y45", "amount": "2"},
+        {"isin": "LU1681044993", "amount": "3.5"},
+    ]
+    assert saved_query.selected_tax_fields == ["K11"]
 
 
 @pytest.mark.asyncio
@@ -1569,7 +1729,8 @@ async def test_owner_can_update_saved_business_query_fields(
     assert response.status_code == 200
     assert "Saved query updated." in response.text
     assert 'value="Updated edit rule"' in response.text
-    assert ">LU1681044993\nUS0378331005</textarea>" in response.text
+    assert "LU1681044993, 777.25" in response.text
+    assert "US0378331005, 777.25" in response.text
 
     async with session_factory() as session:
         saved_query = await session.scalar(select(BQSAVED).where(BQSAVED.id == saved_query_id))
@@ -1582,6 +1743,10 @@ async def test_owner_can_update_saved_business_query_fields(
     assert saved_query.amount == Decimal("777.2500000000")
     assert saved_query.note == "Updated note"
     assert saved_query.default_isins == ["LU1681044993", "US0378331005"]
+    assert saved_query.ordered_positions == [
+        {"isin": "LU1681044993", "amount": "777.25"},
+        {"isin": "US0378331005", "amount": "777.25"},
+    ]
     assert saved_query.selected_tax_fields == ["K11", "K62"]
 
 
@@ -1941,6 +2106,63 @@ async def test_owner_can_run_saved_business_query_from_queries_page(
     assert query.tax_year_filter == "2025"
     assert query.tax_fields == ("K11", "K62")
     assert query.amount_multiplier == Decimal("42.50")
+
+
+@pytest.mark.asyncio
+async def test_owner_can_run_saved_business_query_with_position_amounts_from_queries_page(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Direct position run rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_legal_person",
+            tax_year_filter="2025",
+            amount=Decimal("2.00"),
+            default_isins=["IE00BMTX1Y45", "LU1681044993"],
+            ordered_positions=[
+                {"isin": "IE00BMTX1Y45", "amount": "2"},
+                {"isin": "LU1681044993", "amount": "3.5"},
+            ],
+            selected_tax_fields=["K11"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    service_calls: list[BusinessQueryInput] = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append(query)
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(f"/app/business-query/queries/{saved_query_id}/run")
+
+    assert response.status_code == 200
+    assert "Saved query ran using its default ISINs." in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0]
+    assert query.query_name == "Direct position run rule"
+    assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
+    assert query.amount_multiplier == Decimal("2.00")
+    assert [(position.isin, position.amount) for position in query.positions] == [
+        ("IE00BMTX1Y45", Decimal("2")),
+        ("LU1681044993", Decimal("3.5")),
+    ]
 
 
 @pytest.mark.asyncio
@@ -3133,6 +3355,86 @@ async def test_business_query_export_uses_current_submitted_fields_after_saved_q
     assert query.tax_year_filter == "all_available_years"
     assert query.tax_fields == ("K11", "K61")
     assert query.amount_multiplier == Decimal("777.25")
+
+
+@pytest.mark.asyncio
+async def test_business_query_export_uses_loaded_position_amount_fields(
+    saved_query_client: tuple[httpx.AsyncClient, async_sessionmaker[AsyncSession]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web_client, session_factory = saved_query_client
+    async with session_factory() as session:
+        saved_query = BQSAVED(
+            owner_username="admin",
+            query_name="Saved position export rule",
+            legal_entity_type="business",
+            subcategory_key="business_bv_with_option",
+            tax_year_filter="2025",
+            amount=Decimal("2.00"),
+            default_isins=["IE00BMTX1Y45", "LU1681044993"],
+            ordered_positions=[
+                {"isin": "IE00BMTX1Y45", "amount": "2"},
+                {"isin": "LU1681044993", "amount": "3.5"},
+            ],
+            selected_tax_fields=["K40"],
+        )
+        session.add(saved_query)
+        await session.commit()
+        saved_query_id = saved_query.id
+
+    service_calls: list[BusinessQueryInput] = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append(query)
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    load_response = await web_client.get(f"/app/business-query/saved/{saved_query_id}/load")
+    assert load_response.status_code == 200
+    assert "IE00BMTX1Y45, 2" in load_response.text
+    assert "LU1681044993, 3.5" in load_response.text
+
+    response = await web_client.post(
+        "/app/business-query/export",
+        content=urlencode(
+            [
+                ("query_name", "Saved position export rule"),
+                ("position_input_mode", "table"),
+                ("position_isin", "IE00BMTX1Y45"),
+                ("position_amount", "2"),
+                ("position_isin", "LU1681044993"),
+                ("position_amount", "3.5"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_with_option"),
+                ("tax_year_filter", "2025"),
+                ("tax_fields_present", "1"),
+                ("tax_fields", "K40"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert len(service_calls) == 1
+    query = service_calls[0]
+    assert query.query_name == "Saved position export rule"
+    assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
+    assert query.amount_multiplier == Decimal("2")
+    assert [(position.isin, position.amount) for position in query.positions] == [
+        ("IE00BMTX1Y45", Decimal("2")),
+        ("LU1681044993", Decimal("3.5")),
+    ]
 
 
 @pytest.mark.asyncio

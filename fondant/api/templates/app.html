@@ -444,16 +444,91 @@
               <p class="field-error" id="query-name-error">{{ business_query_errors.query_name }}</p>
               {% endif %}
 
-              <label for="isins">Default ISIN list</label>
-              <textarea
-                id="isins"
-                name="isins"
-                rows="6"
-                placeholder="Optional default ISINs, one per line"
-                {% if business_query_errors.isins %}aria-invalid="true" aria-describedby="isins-error"{% endif %}
-              >{{ business_query_form.isins }}</textarea>
+              <input type="hidden" name="isins" value="{{ business_query_form.isins }}">
+              <input type="hidden" name="amount" value="{{ business_query_form.amount }}">
+              <div
+                class="position-entry{% if business_query_form.position_input_mode == "box" %} box-active{% endif %}"
+                {% if business_query_errors.positions or business_query_errors.isins %}aria-invalid="true" aria-describedby="edit-positions-error"{% endif %}
+              >
+                <div class="position-entry-header">
+                  <h2>ISIN amounts</h2>
+                </div>
+                <input type="hidden" name="position_input_mode" value="{{ business_query_form.position_input_mode }}">
+                {% if business_query_form.position_input_mode == "table" %}
+                <div class="position-table-panel">
+                  <div class="result-table-wrap position-table-wrap">
+                    <table class="result-table position-input-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">ISIN</th>
+                          <th scope="col">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in business_query_form.position_rows %}
+                        <tr>
+                          <td>
+                            <input
+                              id="edit-position-isin-{{ loop.index }}"
+                              name="position_isin"
+                              type="text"
+                              autocomplete="off"
+                              placeholder="IE00BMTX1Y45"
+                              value="{{ row.isin }}"
+                              {% if row.isin_error %}aria-invalid="true" aria-describedby="edit-position-isin-{{ loop.index }}-error"{% endif %}
+                            >
+                            {% if row.isin_error %}
+                            <p class="field-error" id="edit-position-isin-{{ loop.index }}-error">{{ row.isin_error }}</p>
+                            {% endif %}
+                          </td>
+                          <td>
+                            <input
+                              id="edit-position-amount-{{ loop.index }}"
+                              name="position_amount"
+                              type="number"
+                              inputmode="decimal"
+                              min="0"
+                              step="0.01"
+                              placeholder="10000.00"
+                              value="{{ row.amount }}"
+                              {% if row.amount_error %}aria-invalid="true" aria-describedby="edit-position-amount-{{ loop.index }}-error"{% endif %}
+                            >
+                            {% if row.amount_error %}
+                            <p class="field-error" id="edit-position-amount-{{ loop.index }}-error">{{ row.amount_error }}</p>
+                            {% endif %}
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="position-table-actions">
+                    <button
+                      class="secondary-action position-add-row-action"
+                      type="submit"
+                      name="business_query_action"
+                      value="add_position_row"
+                    >+ Add row</button>
+                  </div>
+                </div>
+                {% else %}
+                <div class="position-box-panel">
+                  <label for="edit-position-paste">Box view ISIN and amount rows</label>
+                  <textarea
+                    id="edit-position-paste"
+                    name="position_paste"
+                    rows="6"
+                    placeholder="IE000XZSV718, 5&#10;IE00BMTX1Y45, 10000.00"
+                  >{{ business_query_form.position_paste }}</textarea>
+                  <p class="field-note">Enter one row per ISIN. Separate ISIN and amount with a comma, space, semicolon, or tab.</p>
+                </div>
+                {% endif %}
+              </div>
               {% if business_query_errors.isins %}
-              <p class="field-error" id="isins-error">{{ business_query_errors.isins }}</p>
+              <p class="field-error" id="edit-isins-error">{{ business_query_errors.isins }}</p>
+              {% endif %}
+              {% if business_query_errors.positions %}
+              <p class="field-error" id="edit-positions-error">{{ business_query_errors.positions }}</p>
               {% endif %}
 
               <label for="legal-entity-type">Legal entity type</label>
@@ -530,22 +605,6 @@
               </fieldset>
               {% if business_query_errors.tax_fields %}
               <p class="field-error" id="tax-fields-error">{{ business_query_errors.tax_fields }}</p>
-              {% endif %}
-
-              <label for="amount">Amount</label>
-              <input
-                id="amount"
-                name="amount"
-                type="number"
-                inputmode="decimal"
-                min="0"
-                step="0.01"
-                placeholder="10000.00"
-                value="{{ business_query_form.amount }}"
-                {% if business_query_errors.amount %}aria-invalid="true" aria-describedby="amount-error"{% endif %}
-              >
-              {% if business_query_errors.amount %}
-              <p class="field-error" id="amount-error">{{ business_query_errors.amount }}</p>
               {% endif %}
 
               <label for="query-note">Note</label>

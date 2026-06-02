@@ -511,11 +511,12 @@ def _business_query_form_from_saved_query(
     input_view: str = DEFAULT_BUSINESS_QUERY_INPUT_VIEW,
 ) -> dict[str, object]:
     form = _empty_business_query_form(input_view)
-    position_values = tuple((isin, str(saved_query.amount)) for isin in saved_query.default_isins or [])
+    position_values = _business_query_position_values_from_saved_query(saved_query)
+    default_isins = [isin for isin, _amount in position_values]
     form.update(
         {
             "query_name": saved_query.query_name,
-            "isins": "\n".join(saved_query.default_isins or []),
+            "isins": "\n".join(default_isins),
             "position_rows": _business_query_position_rows_from_values(position_values),
             "position_paste": _business_query_position_paste_from_values(position_values)
             if form["position_input_mode"] == "box"
@@ -530,6 +531,29 @@ def _business_query_form_from_saved_query(
         }
     )
     return form
+
+
+def _business_query_position_values_from_saved_query(
+    saved_query: BQSAVED,
+) -> tuple[tuple[str, str], ...]:
+    if saved_query.ordered_positions:
+        return tuple(
+            (str(position["isin"]), str(position["amount"]))
+            for position in saved_query.ordered_positions
+        )
+    return tuple((isin, str(saved_query.amount)) for isin in saved_query.default_isins or [])
+
+
+def _business_query_ordered_positions_from_preview(
+    preview: dict[str, object],
+) -> list[dict[str, str]] | None:
+    positions = cast(tuple[dict[str, object], ...], preview.get("positions", ()))
+    if not positions:
+        return None
+    return [
+        {"isin": str(position["isin"]), "amount": str(position["amount"])}
+        for position in positions
+    ]
 
 
 def _normalize_business_query_tax_fields(raw_tax_fields: object) -> tuple[str, ...]:
@@ -566,14 +590,26 @@ def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQu
 
 
 def _business_query_input_from_saved_query(saved_query: BQSAVED) -> BusinessQueryInput:
+    saved_position_values = _business_query_position_values_from_saved_query(saved_query)
+    positions = tuple(
+        BusinessQueryPosition(isin=isin, amount=Decimal(amount))
+        for isin, amount in saved_position_values
+        if saved_query.ordered_positions
+    )
+    isins = (
+        tuple(isin for isin, _amount in saved_position_values)
+        if saved_query.ordered_positions
+        else tuple(saved_query.default_isins or ())
+    )
     return BusinessQueryInput(
         query_name=saved_query.query_name,
-        isins=tuple(saved_query.default_isins or ()),
+        isins=isins,
         legal_entity_type=saved_query.legal_entity_type,
         subcategory_key=saved_query.subcategory_key,
         tax_year_filter=saved_query.tax_year_filter,
         tax_fields=tuple(saved_query.selected_tax_fields or BUSINESS_QUERY_DEFAULT_TAX_FIELDS),
         amount_multiplier=saved_query.amount,
+        positions=positions,
     )
 
 
@@ -1205,7 +1241,7 @@ async def run_saved_business_query(
     result = None
     errors: dict[str, str] = {}
     status = ""
-    if saved_query.default_isins:
+    if saved_query.default_isins or saved_query.ordered_positions:
         result = await execute_business_query(
             session,
             _business_query_input_from_saved_query(saved_query),
@@ -1350,6 +1386,25 @@ async def edit_business_query(
     form_values = _business_query_form_values(form)
     group_id_text = str(form.get("group_id", "")).strip()
     form_values["group_id"] = group_id_text
+    if (
+        str(form.get("business_query_action", "")) == "add_position_row"
+        and form_values["position_input_mode"] == "table"
+    ):
+        form_values = _append_blank_business_query_position_row(form_values)
+        form_values["group_id"] = group_id_text
+        errors = {}
+        if form_values.get("position_row_errors"):
+            errors["positions"] = "Fix the highlighted ISIN rows."
+        return _render_app_shell(
+            request,
+            "business-query-edit",
+            business_query_form=form_values,
+            business_query_errors=errors,
+            saved_business_queries=await _saved_business_queries(session, username),
+            business_query_group_options=await _business_query_group_options(session, username),
+            edit_saved_query_id=saved_query_id,
+        )
+
     errors, preview = _validate_business_query_form(form_values, require_isins=False)
     group_error, group_id = await _validate_business_query_group_assignment(
         session,
@@ -1372,6 +1427,7 @@ async def edit_business_query(
         saved_query.amount = Decimal(str(preview["amount"]))
         saved_query.note = str(preview["note"]) or None
         saved_query.default_isins = cast(list[str], preview["isins"]) or None
+        saved_query.ordered_positions = _business_query_ordered_positions_from_preview(preview)
         try:
             await session.commit()
         except IntegrityError:
@@ -1417,6 +1473,7 @@ async def save_business_query(
             amount=Decimal(str(preview["amount"])),
             note=str(preview["note"]) or None,
             default_isins=cast(list[str], preview["isins"]) or None,
+            ordered_positions=_business_query_ordered_positions_from_preview(preview),
         )
         session.add(saved_query)
         try:
