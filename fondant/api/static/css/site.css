@@ -641,6 +641,16 @@ h1 {
   -webkit-overflow-scrolling: touch;
 }
 
+.position-table-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 0.75rem;
+}
+
+.position-add-row-action {
+  min-width: 7rem;
+}
+
 .result-table {
   width: 100%;
   min-width: 48rem;

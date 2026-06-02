@@ -341,6 +341,8 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert "Box view" in response.text
         assert 'name="position_isin"' not in response.text
         assert 'name="position_amount"' not in response.text
+        assert 'name="business_query_action" value="add_position_row"' not in response.text
+        assert "+ Add row" not in response.text
         assert 'id="position-paste"' in response.text
         assert 'name="isins"' in response.text
         assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
@@ -449,7 +451,109 @@ async def test_business_query_input_view_setting_persists_in_cookie(
     assert 'name="position_input_mode" value="table"' in response.text
     assert 'name="position_isin"' in response.text
     assert 'name="position_amount"' in response.text
+    assert 'name="business_query_action"' in response.text
+    assert 'value="add_position_row"' in response.text
+    assert "+ Add row" in response.text
     assert 'id="position-paste"' not in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_add_row_preserves_table_values_and_adds_blank_row(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("add-row POST must not call the BusinessQuery service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/new",
+        content=urlencode(
+            [
+                ("query_name", "Position rows"),
+                ("position_input_mode", "table"),
+                ("position_isin", "ie00bmtx1y45"),
+                ("position_amount", "2"),
+                ("position_isin", "lu1681044993"),
+                ("position_amount", "3.5"),
+                ("position_isin", ""),
+                ("position_amount", ""),
+                ("business_query_action", "add_position_row"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_with_option"),
+                ("tax_year_filter", "2025"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Query results</h2>" not in response.text
+    assert 'name="business_query_action"' in response.text
+    assert 'value="add_position_row"' in response.text
+    assert response.text.count('name="position_isin"') == 4
+    assert response.text.count('name="position_amount"') == 4
+    assert response.text.index('value="IE00BMTX1Y45"') < response.text.index(
+        'value="LU1681044993"'
+    )
+    assert 'value="2"' in response.text
+    assert 'value="3.5"' in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_add_row_preserves_invalid_values_and_errors(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("invalid add-row POST must not call the BusinessQuery service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query/new",
+        content=urlencode(
+            [
+                ("query_name", "Bad rows"),
+                ("position_input_mode", "table"),
+                ("position_isin", "not-an-isin"),
+                ("position_amount", "abc"),
+                ("position_isin", "IE00BMTX1Y45"),
+                ("position_amount", "-1"),
+                ("business_query_action", "add_position_row"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_with_option"),
+                ("tax_year_filter", "2025"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Query results</h2>" not in response.text
+    assert response.text.count('name="position_isin"') == 4
+    assert response.text.count('name="position_amount"') == 4
+    assert 'value="NOT-AN-ISIN"' in response.text
+    assert 'value="abc"' in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="-1"' in response.text
+    assert "Fix the highlighted ISIN rows." in response.text
+    assert "Enter an ISIN-like value such as IE00BMTX1Y45." in response.text
+    assert "Enter a numeric amount." in response.text
+    assert "Enter a positive amount." in response.text
 
 
 @pytest.mark.asyncio

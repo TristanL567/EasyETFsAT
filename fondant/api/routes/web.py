@@ -241,6 +241,12 @@ def _business_query_position_rows_from_values(
     return rows
 
 
+def _append_blank_business_query_position_row(form_values: dict[str, object]) -> dict[str, object]:
+    rows = list(cast(list[dict[str, str]], form_values.get("position_rows", [])))
+    rows.append({"isin": "", "amount": "", "isin_error": "", "amount_error": ""})
+    return {**form_values, "position_rows": rows}
+
+
 def _business_query_position_paste_from_values(values: tuple[tuple[str, str], ...]) -> str:
     return "\n".join(
         f"{isin}, {amount}" if amount else isin
@@ -1101,6 +1107,22 @@ async def submit_business_query_new(
 
     form = await request.form()
     form_values = _business_query_form_values(form)
+    if (
+        str(form.get("business_query_action", "")) == "add_position_row"
+        and form_values["position_input_mode"] == "table"
+    ):
+        form_values = _append_blank_business_query_position_row(form_values)
+        errors = {}
+        if form_values.get("position_row_errors"):
+            errors["positions"] = "Fix the highlighted ISIN rows."
+        return _render_app_shell(
+            request,
+            "business-query",
+            business_query_form=form_values,
+            business_query_errors=errors,
+            saved_business_queries=await _saved_business_queries(session, username),
+        )
+
     errors, preview = _validate_business_query_form(form_values)
     if preview is not None:
         form_values = _normalized_business_query_form(preview)
