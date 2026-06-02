@@ -1,0 +1,54 @@
+ticket_id: BQ6-004A
+dispatched_by: master-planner
+goal: Add an explicit plus-style Add row control to the BusinessQuery ISIN/amount table.
+dependencies:
+  - BQ6-004 approved or BQ6-004 remediation accepted for continued UI work
+allowed_areas:
+  - fondant/api/routes/web.py
+  - fondant/api/templates/app.html
+  - fondant/api/static/css/site.css
+  - tests/test_web_routes.py
+must_not_touch:
+  - fondant/business_query.py
+  - fondant/db/models/
+  - alembic/
+  - .env
+requirements:
+  - Add a clear plus-style control below the ISIN/amount table, such as `+ Add row`.
+  - The control must add another editable ISIN/amount row for the user.
+  - The control must preserve existing entered rows and values.
+  - The control must work with validation errors, so invalid rows remain visible and additional rows can still be added.
+  - Keep the interaction simple and familiar for non-technical users.
+  - Preserve current table submission semantics and row order.
+non_goals:
+  - No BusinessQuery service changes.
+  - No saved-query schema changes.
+  - No paste parser changes unless needed to keep table state consistent.
+  - No delete/archive behavior.
+acceptance_criteria:
+  - Add New Query renders a visible `+ Add row` style control below the table.
+  - Adding a row preserves existing table row values.
+  - Tests cover the add-row request and resulting extra editable row.
+  - Invalid row submissions still preserve values and errors after adding a row.
+manual_verification_required: true
+manual_verification_steps:
+  - Human verifies the Add row interaction is visually clear and usable in the hosted UI.
+verification_commands:
+  - py -3.10 -m pytest tests/test_web_routes.py tests/test_business_query_service.py
+  - py -3.10 -m ruff check fondant tests
+  - git diff --check
+completion_report_required: true
+business_context: >
+  Users need a familiar way to add more holdings without editing raw text or
+  relying on a fixed number of blank rows.
+user_or_operator_outcome: >
+  Users can click a plus-style button to add as many ISIN/amount rows as they
+  need.
+design_concept: >
+  The table stays the primary UI, with an obvious below-table add-row affordance.
+architecture_boundary: Web UI/routes/tests only.
+success_signal: Web tests and visual QA confirm rows can be added without losing input.
+tradeoffs_or_constraints: >
+  This ticket is intentionally UI-state focused and must not change the
+  BusinessQuery execution service.
+
