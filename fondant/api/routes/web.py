@@ -24,6 +24,7 @@ from fondant.business_query import (
     ALL_AVAILABLE_YEARS,
     DEFAULT_SUBCATEGORY_KEYS,
     DEFAULT_TAX_FIELDS,
+    MOST_RECENT_COMMON_AVAILABLE_YEAR,
     BusinessQueryInput,
     BusinessQueryPosition,
     BusinessQueryResult,
@@ -306,8 +307,13 @@ def _validate_business_query_form(
 
     if tax_year_filter == "":
         errors["tax_year_filter"] = "Choose a tax year."
-    elif tax_year_filter != ALL_AVAILABLE_YEARS and tax_year_filter not in BUSINESS_QUERY_TAX_YEAR_OPTIONS:
-        errors["tax_year_filter"] = "Choose All available years or one of the listed tax years."
+    elif (
+        tax_year_filter not in {ALL_AVAILABLE_YEARS, MOST_RECENT_COMMON_AVAILABLE_YEAR}
+        and tax_year_filter not in BUSINESS_QUERY_TAX_YEAR_OPTIONS
+    ):
+        errors["tax_year_filter"] = (
+            "Choose All available years, Latest common available year, or one of the listed tax years."
+        )
 
     if not selected_tax_fields:
         errors["tax_fields"] = "Choose at least one tax field."
@@ -602,6 +608,8 @@ def _business_query_result_to_csv(result: BusinessQueryResult) -> str:
 def _format_business_query_tax_year_filter(value: str) -> str:
     if value == ALL_AVAILABLE_YEARS:
         return "All available years"
+    if value == MOST_RECENT_COMMON_AVAILABLE_YEAR:
+        return "Latest common available year"
     return value
 
 
@@ -998,6 +1006,8 @@ def _render_app_shell(
             "business_query_subcategory_options": BUSINESS_QUERY_SUBCATEGORY_OPTIONS,
             "business_query_subcategory_labels": BUSINESS_QUERY_SUBCATEGORY_LABELS,
             "all_available_years": ALL_AVAILABLE_YEARS,
+            "most_recent_common_available_year": MOST_RECENT_COMMON_AVAILABLE_YEAR,
+            "format_business_query_tax_year_filter": _format_business_query_tax_year_filter,
             "business_query_tax_year_options": BUSINESS_QUERY_TAX_YEAR_OPTIONS,
             "business_query_tax_field_metadata": BUSINESS_QUERY_TAX_FIELD_METADATA,
             "format_business_query_decimal_3": _format_business_query_decimal_3,

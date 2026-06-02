@@ -207,6 +207,7 @@
                 {% if business_query_errors.tax_year_filter %}aria-invalid="true" aria-describedby="tax-year-filter-error"{% endif %}
               >
                 <option value="{{ all_available_years }}"{% if business_query_form.tax_year_filter == all_available_years %} selected{% endif %}>All available years</option>
+                <option value="{{ most_recent_common_available_year }}"{% if business_query_form.tax_year_filter == most_recent_common_available_year %} selected{% endif %}>Latest common available year</option>
                 {% for tax_year in business_query_tax_year_options %}
                 <option value="{{ tax_year }}"{% if business_query_form.tax_year_filter == tax_year %} selected{% endif %}>{{ tax_year }}</option>
                 {% endfor %}
@@ -279,8 +280,15 @@
                   </div>
                   <div>
                     <dt>Selected tax year</dt>
-                    <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
+                    <dd>{{ format_business_query_tax_year_filter(business_query_result.query.tax_year_filter) }}</dd>
                   </div>
+                  {% if business_query_result.query.tax_year_filter == most_recent_common_available_year and business_query_result.rows %}
+                  {% set resolved_tax_years = business_query_result.rows | map(attribute="tax_year") | reject("none") | unique | sort | list %}
+                  <div>
+                    <dt>Resolved tax year</dt>
+                    <dd>{{ resolved_tax_years | join(", ") if resolved_tax_years else "-" }}</dd>
+                  </div>
+                  {% endif %}
                   {% set oekb_release_dates = business_query_result.rows | map(attribute="report_date") | reject("none") | unique | sort | list %}
                   <div>
                     <dt>OeKB release date</dt>
@@ -304,10 +312,23 @@
                     </dd>
                   </div>
                   <div>
-                    <dt>Amount</dt>
-                    <dd>{{ format_business_query_decimal_3(business_query_result.query.amount_multiplier) }}</dd>
+                    <dt>Amount source</dt>
+                    <dd>
+                      {% if business_query_result.query.positions %}
+                      Per-ISIN table amounts
+                      {% else %}
+                      Global amount fallback: {{ format_business_query_decimal_3(business_query_result.query.amount_multiplier) }}
+                      {% endif %}
+                    </dd>
                   </div>
                 </dl>
+                {% if business_query_result.no_common_year_messages %}
+                <div class="availability-messages" role="status" aria-label="Latest-common-year availability">
+                  {% for message in business_query_result.no_common_year_messages %}
+                  <p>{{ message }}</p>
+                  {% endfor %}
+                </div>
+                {% endif %}
                 {% if business_query_result.missing_year_messages %}
                 <div class="availability-messages" role="status" aria-label="Selected-year availability">
                   {% for message in business_query_result.missing_year_messages %}
@@ -330,7 +351,7 @@
                         <th scope="col">Original/home base value</th>
                         <th scope="col">Original/home calculated value</th>
                         <th scope="col">EUR base value</th>
-                        <th scope="col">Multiplier</th>
+                        <th scope="col">Applied amount</th>
                         <th scope="col">EUR calculated value</th>
                         <th scope="col">FX rate/date</th>
                       </tr>
@@ -476,6 +497,7 @@
                 {% if business_query_errors.tax_year_filter %}aria-invalid="true" aria-describedby="tax-year-filter-error"{% endif %}
               >
                 <option value="{{ all_available_years }}"{% if business_query_form.tax_year_filter == all_available_years %} selected{% endif %}>All available years</option>
+                <option value="{{ most_recent_common_available_year }}"{% if business_query_form.tax_year_filter == most_recent_common_available_year %} selected{% endif %}>Latest common available year</option>
                 {% for tax_year in business_query_tax_year_options %}
                 <option value="{{ tax_year }}"{% if business_query_form.tax_year_filter == tax_year %} selected{% endif %}>{{ tax_year }}</option>
                 {% endfor %}
@@ -601,8 +623,15 @@
                   </div>
                   <div>
                     <dt>Selected tax year</dt>
-                    <dd>{{ "All available years" if business_query_result.query.tax_year_filter == all_available_years else business_query_result.query.tax_year_filter }}</dd>
+                    <dd>{{ format_business_query_tax_year_filter(business_query_result.query.tax_year_filter) }}</dd>
                   </div>
+                  {% if business_query_result.query.tax_year_filter == most_recent_common_available_year and business_query_result.rows %}
+                  {% set resolved_tax_years = business_query_result.rows | map(attribute="tax_year") | reject("none") | unique | sort | list %}
+                  <div>
+                    <dt>Resolved tax year</dt>
+                    <dd>{{ resolved_tax_years | join(", ") if resolved_tax_years else "-" }}</dd>
+                  </div>
+                  {% endif %}
                   {% set oekb_release_dates = business_query_result.rows | map(attribute="report_date") | reject("none") | unique | sort | list %}
                   <div>
                     <dt>OeKB release date</dt>
@@ -626,10 +655,23 @@
                     </dd>
                   </div>
                   <div>
-                    <dt>Amount</dt>
-                    <dd>{{ format_business_query_decimal_3(business_query_result.query.amount_multiplier) }}</dd>
+                    <dt>Amount source</dt>
+                    <dd>
+                      {% if business_query_result.query.positions %}
+                      Per-ISIN table amounts
+                      {% else %}
+                      Global amount fallback: {{ format_business_query_decimal_3(business_query_result.query.amount_multiplier) }}
+                      {% endif %}
+                    </dd>
                   </div>
                 </dl>
+                {% if business_query_result.no_common_year_messages %}
+                <div class="availability-messages" role="status" aria-label="Latest-common-year availability">
+                  {% for message in business_query_result.no_common_year_messages %}
+                  <p>{{ message }}</p>
+                  {% endfor %}
+                </div>
+                {% endif %}
                 {% if business_query_result.missing_year_messages %}
                 <div class="availability-messages" role="status" aria-label="Selected-year availability">
                   {% for message in business_query_result.missing_year_messages %}
@@ -652,7 +694,7 @@
                         <th scope="col">Original/home base value</th>
                         <th scope="col">Original/home calculated value</th>
                         <th scope="col">EUR base value</th>
-                        <th scope="col">Multiplier</th>
+                        <th scope="col">Applied amount</th>
                         <th scope="col">EUR calculated value</th>
                         <th scope="col">FX rate/date</th>
                       </tr>

@@ -14,3 +14,4 @@
 | 2026-06-02T11:21:01+02:00 | BQ6-004A | human_approved | visual_qa_approved | Human approved the hosted plus-style Add row interaction after review. | 016c2d0 |
 | 2026-06-02T11:21:01+02:00 | BQ6-004B | dispatched | ticket_envelope_created | Human requested ordering BusinessQuery results by field rather than ISIN; planner added BQ6-004B to the epic sequence. | null |
 | 2026-06-02T11:42:12+02:00 | BQ6-004B | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-004B; planner validation passed service/web tests, ruff, diff check, and scope review. | null |
+| 2026-06-02T12:26:39+02:00 | BQ6-005 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-005; planner validation passed web/service tests, ruff, diff check, and scope review. | null |

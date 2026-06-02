@@ -396,6 +396,10 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert '<option value="business_bv_legal_person">BV jur. Person</option>' in normalized_html
         assert '<option value="stiftung">Stiftung</option>' in normalized_html
         assert '<option value="all_available_years" selected>All available years</option>' in normalized_html
+        assert (
+            '<option value="most_recent_common_available_year">Latest common available year</option>'
+            in normalized_html
+        )
         # BQ-004 uses a conservative server-provided rolling list instead of
         # adding a database dependency to authenticated GET rendering.
         assert f'<option value="{date.today().year}">{date.today().year}</option>' in normalized_html
@@ -2099,8 +2103,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     normalized_html = " ".join(response.text.split())
     assert "<dt>OeKB release date</dt>" in response.text
     assert "<dd> 2025-06-15 </dd>" in normalized_html
-    assert "<dt>Amount</dt>" in response.text
-    assert "<dd>1000.500</dd>" in response.text
+    assert "<dt>Amount source</dt>" in response.text
+    assert "Per-ISIN table amounts" in normalized_html
     assert "<th scope=\"col\">ISIN</th>" in response.text
     assert "<th scope=\"col\">Tax year</th>" in response.text
     assert "<th scope=\"col\">Tax field</th>" in response.text
@@ -2109,7 +2113,7 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<th scope=\"col\">Original/home base value</th>" in response.text
     assert "<th scope=\"col\">Original/home calculated value</th>" in response.text
     assert "<th scope=\"col\">EUR base value</th>" in response.text
-    assert "<th scope=\"col\">Multiplier</th>" in response.text
+    assert "<th scope=\"col\">Applied amount</th>" in response.text
     assert "<th scope=\"col\">EUR calculated value</th>" in response.text
     assert "<th scope=\"col\">FX rate/date</th>" in response.text
     assert "<td>IE00BMTX1Y45</td>" in response.text
@@ -2183,6 +2187,8 @@ async def test_business_query_structured_row_post_passes_positions_to_service(
 
     assert response.status_code == 200
     assert "<h2>Query results</h2>" in response.text
+    assert "<dt>Amount source</dt>" in response.text
+    assert "Per-ISIN table amounts" in response.text
     assert response.text.index('value="IE00BMTX1Y45"') < response.text.index(
         'value="LU1681044993"'
     )
@@ -2190,6 +2196,61 @@ async def test_business_query_structured_row_post_passes_positions_to_service(
     query = service_calls[0][1]
     assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
     assert query.amount_multiplier == Decimal("2")
+    assert [(position.isin, position.amount) for position in query.positions] == [
+        ("IE00BMTX1Y45", Decimal("2")),
+        ("LU1681044993", Decimal("3.5")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_business_query_latest_common_year_post_passes_positions_to_service(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        content=urlencode(
+            [
+                ("query_name", "Latest common rows"),
+                ("position_input_mode", "table"),
+                ("position_isin", "ie00bmtx1y45"),
+                ("position_amount", "2"),
+                ("position_isin", "lu1681044993"),
+                ("position_amount", "3.5"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_with_option"),
+                ("tax_year_filter", "most_recent_common_available_year"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert '<option value="most_recent_common_available_year" selected>Latest common available year</option>' in " ".join(response.text.split())
+    assert "<dt>Selected tax year</dt>" in response.text
+    assert "<dd>Latest common available year</dd>" in response.text
+    assert "<dt>Resolved tax year</dt>" not in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.tax_year_filter == "most_recent_common_available_year"
+    assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
     assert [(position.isin, position.amount) for position in query.positions] == [
         ("IE00BMTX1Y45", Decimal("2")),
         ("LU1681044993", Decimal("3.5")),
@@ -2586,7 +2647,8 @@ async def test_business_query_result_page_formats_numeric_values_for_display(
     )
 
     assert response.status_code == 200
-    assert "<dd>10.124</dd>" in response.text
+    normalized_html = " ".join(response.text.split())
+    assert "Per-ISIN table amounts" in normalized_html
     assert response.text.count("<td>10.000</td>") == 2
     assert response.text.count("<td>10.124</td>") == 3
     assert '<span class="numeric-value">1.2346</span>' in response.text
@@ -2800,6 +2862,48 @@ async def test_business_query_missing_year_messages_render_with_empty_results(
 
 
 @pytest.mark.asyncio
+async def test_business_query_no_common_year_messages_render_clearly(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        return BusinessQueryResult(
+            query=query,
+            rows=(),
+            no_common_year_isins=("IE00BMTX1Y45", "LU1681044993"),
+        )
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "No common year",
+            "position_input_mode": "box",
+            "position_paste": "IE00BMTX1Y45, 2\nLU1681044993, 3.5",
+            "legal_entity_type": "business",
+            "subcategory_key": "business_bv_with_option",
+            "tax_year_filter": "most_recent_common_available_year",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "No common tax year is available for every submitted ISIN: IE00BMTX1Y45, LU1681044993." in response.text
+    assert 'aria-label="Latest-common-year availability"' in response.text
+    assert "No tax rows matched the submitted ISINs." in response.text
+    assert "field-error" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_business_query_valid_export_returns_csv_with_expected_rows(
     web_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -2826,13 +2930,13 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
                     tax_field_code="K61",
                     tax_field_label="AG Ertraege",
                     base_eur_value=Decimal("2.0000000000"),
-                    amount_multiplier=Decimal("1000.50"),
-                    calculated_eur_value=Decimal("2001.000000000000"),
+                    amount_multiplier=Decimal("3.5"),
+                    calculated_eur_value=Decimal("7.000000000000"),
                     original_currency_code="EUR",
                     home_currency_code="EUR",
                     fx_date=date(2025, 6, 15),
                     base_home_currency_value=Decimal("2.0000000000"),
-                    calculated_home_currency_value=Decimal("2001.000000000000"),
+                    calculated_home_currency_value=Decimal("7.000000000000"),
                 ),
                 BusinessQueryResultRow(
                     query_name="Monthly review",
@@ -2846,13 +2950,13 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
                     tax_field_code="K40",
                     tax_field_label="Taxable income",
                     base_eur_value=Decimal("10.0000000000"),
-                    amount_multiplier=Decimal("1000.50"),
-                    calculated_eur_value=Decimal("10005.000000000000"),
+                    amount_multiplier=Decimal("2"),
+                    calculated_eur_value=Decimal("20.000000000000"),
                     original_currency_code="CHF",
                     home_currency_code="CHF",
                     fx_date=date(2025, 6, 15),
                     base_home_currency_value=Decimal("10.9000000000"),
-                    calculated_home_currency_value=Decimal("10905.450000000000"),
+                    calculated_home_currency_value=Decimal("21.800000000000"),
                 ),
             ),
         )
@@ -2867,14 +2971,20 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
 
     response = await web_client.post(
         "/app/business-query/export",
-        data={
-            "query_name": "  Monthly review  ",
-            "isins": "ie00bmtx1y45\n lu1681044993 ",
-            "legal_entity_type": "business",
-            "subcategory_key": "business_bv_legal_person",
-            "tax_year_filter": "2025",
-            "amount": "1000.50",
-        },
+        content=urlencode(
+            [
+                ("query_name", "  Monthly review  "),
+                ("position_input_mode", "table"),
+                ("position_isin", "ie00bmtx1y45"),
+                ("position_amount", "2"),
+                ("position_isin", "lu1681044993"),
+                ("position_amount", "3.5"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_legal_person"),
+                ("tax_year_filter", "2025"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
     )
 
     assert response.status_code == 200
@@ -2890,10 +3000,10 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
             "legal_entity_category": "BVM",
             "original_home_currency": "EUR",
             "base_home_currency_value": "2.0000000000",
-            "calculated_home_currency_value": "2001.000000000000",
+            "calculated_home_currency_value": "7.000000000000",
             "base_eur_value": "2.0000000000",
-            "amount_multiplier": "1000.50",
-            "calculated_eur_value": "2001.000000000000",
+            "amount_multiplier": "3.5",
+            "calculated_eur_value": "7.000000000000",
             "fx_rate": "1.0000000000",
             "fx_date": "2025-06-15",
         },
@@ -2906,10 +3016,10 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
             "legal_entity_category": "BVM",
             "original_home_currency": "CHF",
             "base_home_currency_value": "10.9000000000",
-            "calculated_home_currency_value": "10905.450000000000",
+            "calculated_home_currency_value": "21.800000000000",
             "base_eur_value": "10.0000000000",
-            "amount_multiplier": "1000.50",
-            "calculated_eur_value": "10005.000000000000",
+            "amount_multiplier": "2",
+            "calculated_eur_value": "20.000000000000",
             "fx_rate": "1.0000000000",
             "fx_date": "2025-06-15",
         }
@@ -2938,7 +3048,11 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
     assert query.legal_entity_type == "business"
     assert query.subcategory_key == "business_bv_legal_person"
     assert query.tax_year_filter == "2025"
-    assert query.amount_multiplier == Decimal("1000.50")
+    assert query.amount_multiplier == Decimal("2")
+    assert [(position.isin, position.amount) for position in query.positions] == [
+        ("IE00BMTX1Y45", Decimal("2")),
+        ("LU1681044993", Decimal("3.5")),
+    ]
 
 
 @pytest.mark.asyncio
@@ -3202,7 +3316,10 @@ async def test_business_query_invalid_subcategory_and_tax_year_show_validation_e
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="natural_person_all" selected>All private investor categories</option>' in response.text
     assert "Choose a category that matches the selected legal entity type." in response.text
-    assert "Choose All available years or one of the listed tax years." in response.text
+    assert (
+        "Choose All available years, Latest common available year, or one of the listed tax years."
+        in response.text
+    )
     assert "<h2>Query results</h2>" not in response.text
 
 
