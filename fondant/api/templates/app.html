@@ -642,7 +642,7 @@
             {% elif section_key == "business-query-queries" %}
             <div class="result-panel saved-query-list" aria-label="Saved BusinessQuery rules">
               <h2>Saved queries</h2>
-              <p class="form-note">Review existing saved queries. Use Run to execute saved default ISINs, Load to adjust a rule, or Edit to update it.</p>
+              <p class="form-note">Review existing saved queries. Use Run to execute saved ISINs and amounts, Load to adjust a rule, or Edit to update it.</p>
               <form class="group-filter-form" method="get" action="/app/business-query/queries" aria-label="Filter saved queries by group">
                 <label for="saved-query-group-filter">Filter by group</label>
                 <select id="saved-query-group-filter" name="group_id">
@@ -655,7 +655,7 @@
                 <button class="secondary-action" type="submit">Apply</button>
               </form>
               {% if business_query_status %}
-              <p class="form-success">{{ business_query_status }}</p>
+              <p class="form-success">{% if business_query_status == "Saved query ran using its default ISINs." %}Saved query ran using its saved ISINs and amounts.{% else %}{{ business_query_status }}{% endif %}</p>
               {% endif %}
               {% if business_query_errors.saved_query_run %}
               <p class="field-error">{{ business_query_errors.saved_query_run }}</p>
@@ -739,7 +739,7 @@
                 </div>
                 {% endif %}
                 {% if business_query_result.is_empty %}
-                <p class="empty-state">No tax rows matched the saved query default ISINs.</p>
+                <p class="empty-state">No tax rows matched the saved query inputs.</p>
                 {% else %}
                 <div class="result-table-wrap">
                   <table class="result-table business-query-results-table">
@@ -1116,10 +1116,12 @@
               <p>Original/home currency is the currency of the fund or source tax data. EUR is the converted reporting value.</p>
               <p>The FX rate and FX date show the conversion used to trace each original/home currency value into EUR.</p>
               <p>Choose a specific tax year to filter results to that year. Choose All available years to query every available tax year.</p>
+              <p>Choose Latest common available year to use the newest tax year available for every submitted ISIN. If no shared year exists, BusinessQuery shows a no-common-year message instead of guessing.</p>
               <p>If an ISIN has no data for the selected year, BusinessQuery shows: Data for ISIN {ISIN} is not available for the selected year.</p>
-              <p>The base value is the tax value before applying your entered amount. The calculated value is the base value multiplied by the amount multiplier.</p>
-              <p>Use Add New Query to enter ISINs, select tax fields, run a query, and save a reusable rule.</p>
-              <p>Use Queries to run saved queries directly with their default ISINs, or Load and Edit existing rules.</p>
+              <p>The base value is the tax value before applying your entered amount. The calculated value is multiplied by each row amount, or by the global amount fallback when no per-ISIN amount is saved.</p>
+              <p>Use Add New Query table input to enter ISIN and amount rows, select tax fields, run a query, and save a reusable rule.</p>
+              <p>Use paste mode for bulk entry: paste one ISIN and amount per line, separated by comma, space, semicolon, or tab.</p>
+              <p>Use Queries to run saved queries directly with their saved ISINs and amounts, or Load and Edit existing rules.</p>
               <p>Use Group BusinessQuery to create named groups, then assign saved queries to those groups while editing.</p>
               <p>CSV exports include the query name, ISIN, tax year, tax field, legal entity category, original/home currency values, EUR values, amount multiplier, FX rate, and FX date.</p>
               <p>Search helps find available fund tax data by ISIN or fund/security name, then sends a selected ISIN into BusinessQuery.</p>

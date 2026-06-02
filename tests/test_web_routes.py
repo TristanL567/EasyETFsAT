@@ -582,7 +582,7 @@ async def test_business_query_queries_renders_saved_query_management(
     assert "Create group" not in response.text
     assert "<h2>Saved queries</h2>" in response.text
     assert (
-        "Review existing saved queries. Use Run to execute saved default ISINs, "
+        "Review existing saved queries. Use Run to execute saved ISINs and amounts, "
         "Load to adjust a rule, or Edit to update it."
     ) in response.text
     assert 'aria-label="Filter saved queries by group"' in response.text
@@ -1034,7 +1034,7 @@ async def test_business_query_saved_list_shows_only_current_user_queries(
     assert '<h1 id="app-title">Queries</h1>' in response.text
     assert "<h2>Saved queries</h2>" in response.text
     assert (
-        "Review existing saved queries. Use Run to execute saved default ISINs, "
+        "Review existing saved queries. Use Run to execute saved ISINs and amounts, "
         "Load to adjust a rule, or Edit to update it."
     ) in response.text
     assert "Filter by group" in response.text
@@ -2083,7 +2083,7 @@ async def test_owner_can_run_saved_business_query_from_queries_page(
     response = await web_client.post(f"/app/business-query/queries/{saved_query_id}/run")
 
     assert response.status_code == 200
-    assert "Saved query ran using its default ISINs." in response.text
+    assert "Saved query ran using its saved ISINs and amounts." in response.text
     assert "<h2>Query results</h2>" in response.text
     assert "<dd>Direct run rule</dd>" in response.text
     assert "<dd>LU1681044993</dd>" in response.text
@@ -2153,7 +2153,7 @@ async def test_owner_can_run_saved_business_query_with_position_amounts_from_que
     response = await web_client.post(f"/app/business-query/queries/{saved_query_id}/run")
 
     assert response.status_code == 200
-    assert "Saved query ran using its default ISINs." in response.text
+    assert "Saved query ran using its saved ISINs and amounts." in response.text
     assert len(service_calls) == 1
     query = service_calls[0]
     assert query.query_name == "Direct position run rule"
@@ -2245,7 +2245,7 @@ async def test_saved_business_query_run_without_default_isins_shows_friendly_err
     )
     assert "<td>No default ISIN rule</td>" in response.text
     assert "<h2>Query results</h2>" not in response.text
-    assert "No tax rows matched the saved query default ISINs." not in response.text
+    assert "No tax rows matched the saved query inputs." not in response.text
 
 
 @pytest.mark.asyncio
@@ -4343,24 +4343,39 @@ async def test_documentation_page_renders_authenticated_help_content(
         in response.text
     )
     assert (
+        "Choose Latest common available year to use the newest tax year available "
+        "for every submitted ISIN."
+    ) in response.text
+    assert (
+        "If no shared year exists, BusinessQuery shows a no-common-year message "
+        "instead of guessing."
+    ) in response.text
+    assert (
         "Data for ISIN {ISIN} is not available for the selected year."
         in response.text
     )
     assert "Select one or more tax fields when building a BusinessQuery." in response.text
     assert "K11 - AG Ertraege" in response.text
     assert (
-        "Use Add New Query to enter ISINs, select tax fields, run a query, "
+        "Use Add New Query table input to enter ISIN and amount rows, select tax fields, run a query, "
         "and save a reusable rule."
     ) in response.text
     assert (
-        "Use Queries to run saved queries directly with their default ISINs, "
+        "Use paste mode for bulk entry: paste one ISIN and amount per line, "
+        "separated by comma, space, semicolon, or tab."
+    ) in response.text
+    assert (
+        "Use Queries to run saved queries directly with their saved ISINs and amounts, "
         "or Load and Edit existing rules."
     ) in response.text
     assert (
         "Use Group BusinessQuery to create named groups, then assign saved "
         "queries to those groups while editing."
     ) in response.text
-    assert "amount multiplier" in response.text
+    assert (
+        "The calculated value is multiplied by each row amount, "
+        "or by the global amount fallback when no per-ISIN amount is saved."
+    ) in response.text
     assert "CSV exports include" in response.text
     assert "original/home currency values, EUR values" in response.text
     assert "FX rate, and FX date" in response.text
