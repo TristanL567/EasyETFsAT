@@ -238,6 +238,34 @@ async def test_business_query_selects_multiple_active_registry_tax_fields() -> N
 
 
 @pytest.mark.asyncio
+async def test_business_query_orders_results_by_tax_field_before_isin() -> None:
+    rows = [
+        _view_row(TAXISN="LU1681044993", TAXOKBIDN=1002, K11PVM=Decimal("21.0000000000")),
+        _view_row(TAXISN="IE00BMTX1Y45", TAXOKBIDN=1001, K11PVM=Decimal("11.0000000000")),
+    ]
+    session = _FakeSession(rows)
+
+    result = await execute_business_query(
+        session,
+        BusinessQueryInput(
+            query_name="Field-first ordering",
+            isins=("LU1681044993", "IE00BMTX1Y45"),
+            legal_entity_type="natural person",
+            amount_multiplier=Decimal("1"),
+            tax_fields=("K11", "K61"),
+            subcategory_key="natural_person_pa_with_option",
+        ),
+    )
+
+    assert [(row.tax_field_code, row.isin, row.tax_year, row.oekb_report_id) for row in result.rows] == [
+        ("K11", "IE00BMTX1Y45", 2025, 1001),
+        ("K11", "LU1681044993", 2025, 1002),
+        ("K61", "IE00BMTX1Y45", 2025, 1001),
+        ("K61", "LU1681044993", 2025, 1002),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_business_query_maps_business_suffixes_for_multiple_isins() -> None:
     rows = [
         _view_row(TAXISN="IE00BMTX1Y45", TAXOKBIDN=1001),

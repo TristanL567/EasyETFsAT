@@ -246,7 +246,7 @@ async def execute_business_query(
 
     return BusinessQueryResult(
         query=validated,
-        rows=tuple(rows),
+        rows=_sort_result_rows(rows, tax_fields=validated.tax_fields, suffixes=suffixes),
         missing_year_isins=_missing_year_isins(validated, source_rows),
     )
 
@@ -491,6 +491,29 @@ def _missing_year_isins(
         str(source_row["TAXISN"]).upper() for source_row in source_rows if source_row["TAXYEA"] == query.year
     }
     return tuple(isin for isin in query.isins if isin not in isins_with_selected_year)
+
+
+def _sort_result_rows(
+    rows: list[BusinessQueryResultRow],
+    *,
+    tax_fields: tuple[str, ...],
+    suffixes: tuple[str, ...],
+) -> tuple[BusinessQueryResultRow, ...]:
+    tax_field_order = {field_code: index for index, field_code in enumerate(tax_fields)}
+    suffix_order = {suffix: index for index, suffix in enumerate(suffixes)}
+
+    return tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                tax_field_order[row.tax_field_code],
+                row.isin,
+                row.tax_year if row.tax_year is not None else -1,
+                row.oekb_report_id,
+                suffix_order[row.legal_entity_category],
+            ),
+        )
+    )
 
 
 def _result_row_from_mapping(

@@ -2816,6 +2816,26 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
             rows=(
                 BusinessQueryResultRow(
                     query_name="Monthly review",
+                    isin="LU1681044993",
+                    tax_year=2025,
+                    oekb_report_id=1002,
+                    fund_currency="EUR",
+                    report_date=date(2025, 6, 15),
+                    fx_rate=Decimal("1.0000000000"),
+                    legal_entity_category="BVM",
+                    tax_field_code="K61",
+                    tax_field_label="AG Ertraege",
+                    base_eur_value=Decimal("2.0000000000"),
+                    amount_multiplier=Decimal("1000.50"),
+                    calculated_eur_value=Decimal("2001.000000000000"),
+                    original_currency_code="EUR",
+                    home_currency_code="EUR",
+                    fx_date=date(2025, 6, 15),
+                    base_home_currency_value=Decimal("2.0000000000"),
+                    calculated_home_currency_value=Decimal("2001.000000000000"),
+                ),
+                BusinessQueryResultRow(
+                    query_name="Monthly review",
                     isin="IE00BMTX1Y45",
                     tax_year=2025,
                     oekb_report_id=1001,
@@ -2861,6 +2881,22 @@ async def test_business_query_valid_export_returns_csv_with_expected_rows(
     assert response.headers["content-type"].startswith("text/csv")
     csv_rows = list(csv.DictReader(StringIO(response.text)))
     assert csv_rows == [
+        {
+            "query_name": "Monthly review",
+            "isin": "LU1681044993",
+            "tax_year": "2025",
+            "tax_field_code": "K61",
+            "tax_field_label": "AG Ertraege",
+            "legal_entity_category": "BVM",
+            "original_home_currency": "EUR",
+            "base_home_currency_value": "2.0000000000",
+            "calculated_home_currency_value": "2001.000000000000",
+            "base_eur_value": "2.0000000000",
+            "amount_multiplier": "1000.50",
+            "calculated_eur_value": "2001.000000000000",
+            "fx_rate": "1.0000000000",
+            "fx_date": "2025-06-15",
+        },
         {
             "query_name": "Monthly review",
             "isin": "IE00BMTX1Y45",
