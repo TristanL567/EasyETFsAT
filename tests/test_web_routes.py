@@ -185,6 +185,7 @@ def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     assert "/app/search" in route_paths
     assert "/app/update-data" in route_paths
     assert "/app/documentation" in route_paths
+    assert "/app/settings" in route_paths
     assert "/health" in route_paths
     assert "/etf/{isin}/tax" in route_paths
 
@@ -253,6 +254,7 @@ async def test_app_redirects_unauthenticated_users_to_login(
         "/app/search",
         "/app/update-data",
         "/app/documentation",
+        "/app/settings",
     ]:
         response = await web_client.get(path)
 
@@ -273,7 +275,7 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
     assert 'aria-label="Primary sections"' in response.text
-    assert response.text.count('class="portal-nav-link') == 7
+    assert response.text.count('class="portal-nav-link') == 8
     assert ">BusinessQuery<" in response.text
     assert ">Add New Query<" in response.text
     assert ">Queries<" in response.text
@@ -281,6 +283,7 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert ">Search<" in response.text
     assert ">Update Data<" in response.text
     assert ">Documentation<" in response.text
+    assert ">Settings<" in response.text
     assert 'href="/app/business-query"' in response.text
     assert 'href="/app/business-query/new"' in response.text
     assert 'href="/app/business-query/queries"' in response.text
@@ -288,6 +291,7 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
     assert 'href="/app/search"' in response.text
     assert 'href="/app/update-data"' in response.text
     assert 'href="/app/documentation"' in response.text
+    assert 'href="/app/settings"' in response.text
     normalized_html = " ".join(response.text.split())
     assert (
         ">BusinessQuery</a> <div class=\"portal-subnav\" aria-label=\"BusinessQuery pages\"> "
@@ -298,7 +302,8 @@ async def test_app_renders_for_authenticated_users(web_client: httpx.AsyncClient
         "<a class=\"portal-nav-link portal-subnav-link\" href=\"/app/business-query/groups\" "
         ">Group BusinessQuery</a> </div> </div> <a class=\"portal-nav-link\" href=\"/app/search\" >Search</a> "
         "<a class=\"portal-nav-link\" href=\"/app/update-data\" >Update Data</a> "
-        "<a class=\"portal-nav-link\" href=\"/app/documentation\" >Documentation</a>"
+        "<a class=\"portal-nav-link\" href=\"/app/documentation\" >Documentation</a> "
+        "<a class=\"portal-nav-link\" href=\"/app/settings\" >Settings</a>"
     ) in normalized_html
     assert "Signed in as <strong>admin</strong>" in response.text
     assert "<h1 id=\"app-title\">BusinessQuery</h1>" in response.text
@@ -327,9 +332,12 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert '<label for="query-name">Custom query name</label>' in response.text
         assert 'name="query_name"' in response.text
         assert "<h2>ISIN amounts</h2>" in response.text
+        assert 'class="position-entry box-active"' in response.text
         assert 'class="position-mode-toggle" aria-label="ISIN entry mode"' in response.text
         assert 'id="position-mode-table"' in response.text
-        assert 'id="position-mode-paste"' in response.text
+        assert 'id="position-mode-box"' in response.text
+        assert 'value="box"' in response.text
+        assert "Box view" in response.text
         assert 'name="position_isin"' in response.text
         assert 'name="position_amount"' in response.text
         assert 'id="position-paste"' in response.text
@@ -388,6 +396,55 @@ async def test_business_query_form_renders_for_authenticated_users(
         # BQ-004 uses a conservative server-provided rolling list instead of
         # adding a database dependency to authenticated GET rendering.
         assert f'<option value="{date.today().year}">{date.today().year}</option>' in normalized_html
+
+
+@pytest.mark.asyncio
+async def test_settings_page_renders_business_query_input_view_preference(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.get("/app/settings")
+
+    assert response.status_code == 200
+    assert "<title>Settings - EasyETFsAT</title>" in response.text
+    assert '<form class="settings-form" method="post" action="/app/settings"' in response.text
+    assert "BusinessQuery input view" in response.text
+    assert 'id="business-query-input-view-box"' in response.text
+    assert 'id="business-query-input-view-table"' in response.text
+    assert "This preference is stored in a browser cookie" in response.text
+
+
+@pytest.mark.asyncio
+async def test_business_query_input_view_setting_persists_in_cookie(
+    web_client: httpx.AsyncClient,
+) -> None:
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    settings_response = await web_client.post(
+        "/app/settings",
+        data={"business_query_input_view": "table"},
+    )
+
+    assert settings_response.status_code == 303
+    assert settings_response.headers["location"] == "/app/settings"
+    assert "business_query_input_view=table" in settings_response.headers["set-cookie"]
+    assert "HttpOnly" in settings_response.headers["set-cookie"]
+
+    response = await web_client.get("/app/business-query/new")
+
+    assert response.status_code == 200
+    assert 'id="position-mode-table"' in response.text
+    assert 'id="position-mode-box"' in response.text
+    assert 'class="position-entry box-active"' not in response.text
 
 
 @pytest.mark.asyncio
@@ -2028,7 +2085,7 @@ async def test_business_query_structured_row_post_passes_positions_to_service(
 
 
 @pytest.mark.asyncio
-async def test_business_query_paste_mode_post_parses_rows_before_service(
+async def test_business_query_box_view_post_parses_rows_before_service(
     web_client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2053,7 +2110,7 @@ async def test_business_query_paste_mode_post_parses_rows_before_service(
         "/app/business-query",
         data={
             "query_name": "Pasted rows",
-            "position_input_mode": "paste",
+            "position_input_mode": "box",
             "position_paste": "lu1681044993, 4\nIE00BMTX1Y45\t5.25",
             "legal_entity_type": "natural person",
             "subcategory_key": "natural_person_all",

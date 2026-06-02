@@ -68,6 +68,9 @@ BUSINESS_QUERY_TAX_FIELD_METADATA = {tax_line.line_code: tax_line for tax_line i
 BUSINESS_QUERY_ALLOWED_TAX_FIELDS = frozenset(tax_line.line_code for tax_line in TAX_LINES)
 BUSINESS_QUERY_DEFAULT_TAX_FIELDS = tuple(DEFAULT_TAX_FIELDS)
 ISIN_PATTERN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+BUSINESS_QUERY_INPUT_VIEW_COOKIE = "business_query_input_view"
+BUSINESS_QUERY_INPUT_VIEW_VALUES = frozenset({"box", "table"})
+DEFAULT_BUSINESS_QUERY_INPUT_VIEW = "box"
 RECENT_UPDATE_DATA_JOB_LIMIT = 20
 BACKGROUND_UPDATE_DATA_JOB_LIMIT = 10
 BUSINESS_QUERY_CSV_HEADERS = (
@@ -160,14 +163,38 @@ APP_SECTIONS = {
         "title": "Documentation",
         "summary": "Quick reference for authenticated BusinessQuery and Search use.",
     },
+    "settings": {
+        "section_key": "settings",
+        "label": "Settings",
+        "path": "/app/settings",
+        "title": "Settings",
+        "summary": "Choose lightweight portal preferences for authenticated workflows.",
+    },
 }
 
 
-def _empty_business_query_form() -> dict[str, object]:
+def _business_query_input_view_from_request(request: Request) -> str:
+    value = request.cookies.get(BUSINESS_QUERY_INPUT_VIEW_COOKIE, DEFAULT_BUSINESS_QUERY_INPUT_VIEW)
+    return value if value in BUSINESS_QUERY_INPUT_VIEW_VALUES else DEFAULT_BUSINESS_QUERY_INPUT_VIEW
+
+
+def _business_query_input_mode_from_view(input_view: str) -> str:
+    return "table" if input_view == "table" else "box"
+
+
+def _normalize_position_input_mode(position_input_mode: str) -> str:
+    if position_input_mode == "paste":
+        return "box"
+    if position_input_mode in {"box", "table"}:
+        return position_input_mode
+    return _business_query_input_mode_from_view(DEFAULT_BUSINESS_QUERY_INPUT_VIEW)
+
+
+def _empty_business_query_form(input_view: str = DEFAULT_BUSINESS_QUERY_INPUT_VIEW) -> dict[str, object]:
     return {
         "query_name": "",
         "isins": "",
-        "position_input_mode": "table",
+        "position_input_mode": _business_query_input_mode_from_view(input_view),
         "position_paste": "",
         "position_rows": _blank_business_query_position_rows(),
         "legal_entity_type": LEGAL_ENTITY_TYPES[0],
@@ -180,14 +207,18 @@ def _empty_business_query_form() -> dict[str, object]:
     }
 
 
-def _prefilled_business_query_form(isins: str) -> dict[str, object]:
-    form = _empty_business_query_form()
+def _prefilled_business_query_form(
+    isins: str,
+    input_view: str = DEFAULT_BUSINESS_QUERY_INPUT_VIEW,
+) -> dict[str, object]:
+    form = _empty_business_query_form(input_view)
     normalized_isins = _normalize_isin_input(isins)
     if normalized_isins:
         form["isins"] = "\n".join(normalized_isins)
-        form["position_rows"] = _business_query_position_rows_from_values(
-            tuple((isin, "") for isin in normalized_isins)
-        )
+        position_values = tuple((isin, "") for isin in normalized_isins)
+        form["position_rows"] = _business_query_position_rows_from_values(position_values)
+        if form["position_input_mode"] == "box":
+            form["position_paste"] = _business_query_position_paste_from_values(position_values)
     return form
 
 
@@ -208,6 +239,14 @@ def _business_query_position_rows_from_values(
     ]
     rows.append({"isin": "", "amount": "", "isin_error": "", "amount_error": ""})
     return rows
+
+
+def _business_query_position_paste_from_values(values: tuple[tuple[str, str], ...]) -> str:
+    return "\n".join(
+        f"{isin}, {amount}" if amount else isin
+        for isin, amount in values
+        if isin or amount
+    )
 
 
 def _normalize_isin_input(value: str) -> list[str]:
@@ -291,6 +330,8 @@ def _validate_business_query_form(
         "isins": normalized_isins,
         "isins_text": "\n".join(normalized_isins),
         "positions": positions,
+        "position_input_mode": str(form_values.get("position_input_mode", "")),
+        "position_paste": str(form_values.get("position_paste", "")),
         "legal_entity_type": legal_entity_type,
         "subcategory_key": subcategory_key,
         "tax_year_filter": tax_year_filter,
@@ -307,9 +348,9 @@ def _business_query_form_values(form: Any) -> dict[str, object]:
     tax_fields = _normalize_business_query_tax_fields(raw_tax_fields)
     if not tax_fields and not has_tax_field_control:
         tax_fields = BUSINESS_QUERY_DEFAULT_TAX_FIELDS
-    position_input_mode = str(form.get("position_input_mode", "table") or "table")
-    if position_input_mode not in {"table", "paste"}:
-        position_input_mode = "table"
+    position_input_mode = _normalize_position_input_mode(
+        str(form.get("position_input_mode", "") or "")
+    )
     position_paste = str(form.get("position_paste", ""))
     position_rows, position_row_errors, positions = _business_query_position_values(
         form,
@@ -355,7 +396,7 @@ def _business_query_position_values(
     position_input_mode: str,
     fallback_amount: str,
 ) -> tuple[list[dict[str, str]], bool, tuple[dict[str, object], ...]]:
-    if position_input_mode == "paste":
+    if position_input_mode == "box":
         raw_pairs = _parse_business_query_position_paste(str(form.get("position_paste", "")))
     else:
         raw_isins = form.getlist("position_isin") if hasattr(form, "getlist") else ()
@@ -430,18 +471,20 @@ def _parse_business_query_position_paste(raw_value: str) -> tuple[tuple[str, str
 
 def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, object]:
     positions = cast(tuple[dict[str, object], ...], preview.get("positions", ()))
+    position_values = (
+        tuple((str(position["isin"]), str(position["amount"])) for position in positions)
+        if positions
+        else tuple((isin, str(preview["amount"])) for isin in cast(list[str], preview["isins"]))
+    )
+    position_input_mode = _normalize_position_input_mode(str(preview.get("position_input_mode", "")))
     return {
         "query_name": str(preview["query_name"]),
         "isins": str(preview["isins_text"]),
-        "position_input_mode": "table",
-        "position_paste": "",
-        "position_rows": _business_query_position_rows_from_values(
-            tuple((str(position["isin"]), str(position["amount"])) for position in positions)
-        )
-        if positions
-        else _business_query_position_rows_from_values(
-            tuple((isin, str(preview["amount"])) for isin in cast(list[str], preview["isins"]))
-        ),
+        "position_input_mode": position_input_mode,
+        "position_paste": _business_query_position_paste_from_values(position_values)
+        if position_input_mode == "box"
+        else "",
+        "position_rows": _business_query_position_rows_from_values(position_values),
         "legal_entity_type": str(preview["legal_entity_type"]),
         "subcategory_key": str(preview["subcategory_key"]),
         "tax_year_filter": str(preview["tax_year_filter"]),
@@ -451,15 +494,20 @@ def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, obj
     }
 
 
-def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, object]:
-    form = _empty_business_query_form()
+def _business_query_form_from_saved_query(
+    saved_query: BQSAVED,
+    input_view: str = DEFAULT_BUSINESS_QUERY_INPUT_VIEW,
+) -> dict[str, object]:
+    form = _empty_business_query_form(input_view)
+    position_values = tuple((isin, str(saved_query.amount)) for isin in saved_query.default_isins or [])
     form.update(
         {
             "query_name": saved_query.query_name,
             "isins": "\n".join(saved_query.default_isins or []),
-            "position_rows": _business_query_position_rows_from_values(
-                tuple((isin, str(saved_query.amount)) for isin in saved_query.default_isins or [])
-            ),
+            "position_rows": _business_query_position_rows_from_values(position_values),
+            "position_paste": _business_query_position_paste_from_values(position_values)
+            if form["position_input_mode"] == "box"
+            else "",
             "legal_entity_type": saved_query.legal_entity_type,
             "subcategory_key": saved_query.subcategory_key,
             "tax_year_filter": saved_query.tax_year_filter,
@@ -920,6 +968,8 @@ def _render_app_shell(
     update_data_preview_isins: tuple[str, ...] = (),
     update_data_job_results: tuple[dict[str, str], ...] = (),
     update_data_recent_jobs: tuple[dict[str, str], ...] = (),
+    settings_status: str = "",
+    settings_errors: dict[str, str] | None = None,
 ) -> HTMLResponse:
     username = _authenticated_username(request)
     if username is None:
@@ -946,7 +996,10 @@ def _render_app_shell(
             "business_query_tax_field_metadata": BUSINESS_QUERY_TAX_FIELD_METADATA,
             "format_business_query_decimal_3": _format_business_query_decimal_3,
             "format_business_query_decimal_4": _format_business_query_decimal_4,
-            "business_query_form": business_query_form or _empty_business_query_form(),
+            "business_query_input_view": _business_query_input_view_from_request(request),
+            "business_query_input_view_values": tuple(sorted(BUSINESS_QUERY_INPUT_VIEW_VALUES)),
+            "business_query_form": business_query_form
+            or _empty_business_query_form(_business_query_input_view_from_request(request)),
             "business_query_errors": business_query_errors or {},
             "business_query_status": business_query_status,
             "business_query_result": business_query_result,
@@ -967,6 +1020,8 @@ def _render_app_shell(
             "update_data_preview_isins": update_data_preview_isins,
             "update_data_job_results": update_data_job_results,
             "update_data_recent_jobs": update_data_recent_jobs,
+            "settings_status": settings_status,
+            "settings_errors": settings_errors or {},
             "tax_lines": TAX_LINES,
         },
     )
@@ -999,7 +1054,10 @@ async def app_business_query(
     return _render_app_shell(
         request,
         "business-query",
-        business_query_form=_prefilled_business_query_form(isins),
+        business_query_form=_prefilled_business_query_form(
+            isins,
+            _business_query_input_view_from_request(request),
+        ),
         saved_business_queries=await _saved_business_queries(session, username),
     )
 
@@ -1016,7 +1074,10 @@ async def app_business_query_new(
     return _render_app_shell(
         request,
         "business-query",
-        business_query_form=_prefilled_business_query_form(isins),
+        business_query_form=_prefilled_business_query_form(
+            isins,
+            _business_query_input_view_from_request(request),
+        ),
         saved_business_queries=await _saved_business_queries(session, username),
     )
 
@@ -1229,7 +1290,10 @@ async def edit_business_query_form(
     return _render_app_shell(
         request,
         "business-query-edit",
-        business_query_form=_business_query_form_from_saved_query(saved_query),
+        business_query_form=_business_query_form_from_saved_query(
+            saved_query,
+            _business_query_input_view_from_request(request),
+        ),
         saved_business_queries=await _saved_business_queries(session, username),
         business_query_group_options=await _business_query_group_options(session, username),
         edit_saved_query_id=saved_query_id,
@@ -1358,7 +1422,10 @@ async def load_business_query(
     return _render_app_shell(
         request,
         "business-query",
-        business_query_form=_business_query_form_from_saved_query(saved_query),
+        business_query_form=_business_query_form_from_saved_query(
+            saved_query,
+            _business_query_input_view_from_request(request),
+        ),
         business_query_status="Saved query loaded.",
         saved_business_queries=await _saved_business_queries(session, username),
     )
@@ -1547,6 +1614,39 @@ async def run_queued_update_jobs(limit: int = BACKGROUND_UPDATE_DATA_JOB_LIMIT) 
 @router.get("/app/documentation", response_class=HTMLResponse)
 async def app_documentation(request: Request) -> HTMLResponse:
     return _render_app_shell(request, "documentation")
+
+
+@router.get("/app/settings", response_class=HTMLResponse)
+async def app_settings(request: Request) -> HTMLResponse:
+    return _render_app_shell(request, "settings")
+
+
+@router.post("/app/settings", response_class=HTMLResponse)
+async def update_app_settings(request: Request) -> Response:
+    username = _authenticated_username(request)
+    if username is None:
+        return RedirectResponse(url="/login", status_code=303)
+
+    form = await request.form()
+    input_view = str(form.get("business_query_input_view", "")).strip()
+    if input_view not in BUSINESS_QUERY_INPUT_VIEW_VALUES:
+        return _render_app_shell(
+            request,
+            "settings",
+            settings_errors={
+                "business_query_input_view": "Choose Table view or Box view.",
+            },
+        )
+
+    response = RedirectResponse(url="/app/settings", status_code=303)
+    response.set_cookie(
+        key=BUSINESS_QUERY_INPUT_VIEW_COOKIE,
+        value=input_view,
+        max_age=60 * 60 * 24 * 365,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 def _validate_update_data_isins(raw_isins: str) -> tuple[dict[str, str], tuple[str, ...]]:

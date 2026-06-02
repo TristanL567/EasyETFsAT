@@ -82,7 +82,7 @@
               <input type="hidden" name="isins" value="{{ business_query_form.isins }}">
               <input type="hidden" name="amount" value="{{ business_query_form.amount }}">
               <div
-                class="position-entry{% if business_query_form.position_input_mode == "paste" %} paste-active{% endif %}"
+                class="position-entry{% if business_query_form.position_input_mode == "box" %} box-active{% endif %}"
                 {% if business_query_errors.positions or business_query_errors.isins %}aria-invalid="true" aria-describedby="positions-error"{% endif %}
               >
                 <div class="position-entry-header">
@@ -94,19 +94,19 @@
                         name="position_input_mode"
                         type="radio"
                         value="table"
-                        {% if business_query_form.position_input_mode != "paste" %}checked{% endif %}
+                        {% if business_query_form.position_input_mode == "table" %}checked{% endif %}
                       >
-                      Table
+                      Table view
                     </label>
-                    <label for="position-mode-paste">
+                    <label for="position-mode-box">
                       <input
-                        id="position-mode-paste"
+                        id="position-mode-box"
                         name="position_input_mode"
                         type="radio"
-                        value="paste"
-                        {% if business_query_form.position_input_mode == "paste" %}checked{% endif %}
+                        value="box"
+                        {% if business_query_form.position_input_mode == "box" %}checked{% endif %}
                       >
-                      Paste
+                      Box view
                     </label>
                   </fieldset>
                 </div>
@@ -158,14 +158,15 @@
                     </table>
                   </div>
                 </div>
-                <div class="position-paste-panel">
-                  <label for="position-paste">Paste ISIN and amount rows</label>
+                <div class="position-box-panel">
+                  <label for="position-paste">Box view ISIN and amount rows</label>
                   <textarea
                     id="position-paste"
                     name="position_paste"
                     rows="6"
-                    placeholder="IE00BMTX1Y45 10000.00"
+                    placeholder="IE000XZSV718, 5&#10;IE00BMTX1Y45, 10000.00"
                   >{{ business_query_form.position_paste }}</textarea>
+                  <p class="field-note">Enter one row per ISIN. Separate ISIN and amount with a comma, space, semicolon, or tab.</p>
                 </div>
               </div>
               {% if business_query_errors.isins %}
@@ -972,6 +973,48 @@
               {% else %}
               <p class="empty-state">No update jobs have been queued yet.</p>
               {% endif %}
+            </div>
+            {% elif section_key == "settings" %}
+            <div class="settings-workspace">
+              <form class="settings-form" method="post" action="/app/settings" aria-label="BusinessQuery settings">
+                <div class="result-panel settings-panel">
+                  <h2>BusinessQuery</h2>
+                  <p class="summary">Choose the default Add New Query input view for this browser.</p>
+                  <fieldset
+                    class="settings-choice"
+                    {% if settings_errors.business_query_input_view %}aria-invalid="true" aria-describedby="business-query-input-view-error"{% endif %}
+                  >
+                    <legend>BusinessQuery input view</legend>
+                    <label for="business-query-input-view-box">
+                      <input
+                        id="business-query-input-view-box"
+                        name="business_query_input_view"
+                        type="radio"
+                        value="box"
+                        {% if business_query_input_view == "box" %}checked{% endif %}
+                      >
+                      Box view
+                    </label>
+                    <label for="business-query-input-view-table">
+                      <input
+                        id="business-query-input-view-table"
+                        name="business_query_input_view"
+                        type="radio"
+                        value="table"
+                        {% if business_query_input_view == "table" %}checked{% endif %}
+                      >
+                      Table view
+                    </label>
+                  </fieldset>
+                  {% if settings_errors.business_query_input_view %}
+                  <p class="field-error" id="business-query-input-view-error">{{ settings_errors.business_query_input_view }}</p>
+                  {% endif %}
+                  <p class="field-note">This preference is stored in a browser cookie and does not change saved query rules.</p>
+                  <div class="form-actions">
+                    <button class="primary-action" type="submit">Save settings</button>
+                  </div>
+                </div>
+              </form>
             </div>
             {% else %}
             <div class="placeholder-panel{% if section_key == "documentation" %} documentation-panel{% endif %}">

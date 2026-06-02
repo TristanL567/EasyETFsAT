@@ -264,6 +264,7 @@ h1 {
 
 .business-query-form [aria-invalid="true"],
 .business-query-group-form [aria-invalid="true"],
+.settings-form [aria-invalid="true"],
 .search-form [aria-invalid="true"],
 .update-data-form [aria-invalid="true"] {
   border-color: #8a1f11;
@@ -326,17 +327,17 @@ h1 {
   display: block;
 }
 
-.position-paste-panel {
+.position-box-panel {
   display: none;
 }
 
-.position-entry:has(#position-mode-paste:checked) .position-table-panel,
-.position-entry.paste-active .position-table-panel {
+.position-entry:has(#position-mode-box:checked) .position-table-panel,
+.position-entry.box-active .position-table-panel {
   display: none;
 }
 
-.position-entry:has(#position-mode-paste:checked) .position-paste-panel,
-.position-entry.paste-active .position-paste-panel {
+.position-entry:has(#position-mode-box:checked) .position-box-panel,
+.position-entry.box-active .position-box-panel {
   display: grid;
   gap: 0.5rem;
 }
@@ -353,6 +354,36 @@ h1 {
 .business-query-group-form h2 {
   margin: 0;
   font-size: 1rem;
+}
+
+.settings-workspace {
+  max-width: 52rem;
+}
+
+.settings-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-choice {
+  display: grid;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-choice legend {
+  margin-bottom: 0.25rem;
+  font-weight: 700;
+}
+
+.settings-choice label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  font-weight: 700;
 }
 
 .update-data-form textarea:disabled {

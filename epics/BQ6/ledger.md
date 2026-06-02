@@ -6,3 +6,5 @@
 | 2026-06-01T21:23:30+02:00 | BQ6-003 | validator_approved | approved_for_commit | Visible Master-Agent completed BQ6-003; planner validation passed business-query service tests, ruff, diff check, and scope review. | null |
 | 2026-06-02T09:40:17+02:00 | BQ6-004 | fixes_required | visual_qa_pending | Visible Master-Agent completed BQ6-004 automated scope and tests; validator requires human visual QA before final approval. | null |
 | 2026-06-02T09:40:17+02:00 | BQ6-004 | human_approved | review_deploy_approved | Human requested merge and push before visual review so the hosted website can render the BQ6-004 UI; this is not final visual approval. | null |
+| 2026-06-02T10:11:41+02:00 | BQ6-004A | dispatched | ticket_envelope_created | Human requested a plus-style Add row ticket for the ISIN/amount table; planner added BQ6-004A to the epic sequence. | 02fabaf |
+| 2026-06-02T10:11:41+02:00 | BQ6-004 | fixes_required | remediation_ready_for_visual_qa | Visible Master-Agent completed settings-based BQ6-004 remediation; planner validation passed tests, ruff, diff check, and scope review. Human visual QA remains required. | null |
