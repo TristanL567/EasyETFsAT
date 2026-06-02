@@ -3,6 +3,7 @@
 import os
 import subprocess
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -130,6 +131,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
         "BQSNOTE",
         "BQSISNS",
         "BQSTXFLDS",
+        "BQSPOSNS",
     }.issubset(bqsaved_columns)
     assert bqsaved_columns["BQSUSR"]["nullable"] is False
     assert bqsaved_columns["BQSGRPIDN"]["nullable"] is True
@@ -141,6 +143,7 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
     assert bqsaved_columns["BQSNOTE"]["nullable"] is True
     assert bqsaved_columns["BQSISNS"]["nullable"] is True
     assert bqsaved_columns["BQSTXFLDS"]["nullable"] is True
+    assert bqsaved_columns["BQSPOSNS"]["nullable"] is True
     bqsaved_constraints = {constraint["name"]: constraint for constraint in inspector.get_unique_constraints("BQSAVED")}
     assert bqsaved_constraints["uq_bqsaved_user_name"]["column_names"] == ["BQSUSR", "BQSNAM"]
     bqsaved_indexes = {index["name"]: index for index in inspector.get_indexes("BQSAVED")}
@@ -208,7 +211,59 @@ def _assert_rebuilt_architecture(database_url: str) -> None:
 
     with engine.connect() as connection:
         revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-    assert revision == "20260531_0018"
+    assert revision == "20260602_0019"
+
+    metadata = sa.MetaData()
+    bqsaved = sa.Table("BQSAVED", metadata, autoload_with=engine)
+    ordered_positions = [
+        {"isin": "AT0000A0ETF2", "amount": "3.5"},
+        {"isin": "AT0000A0ETF1", "amount": "2"},
+    ]
+    timestamp = datetime.now(timezone.utc)
+    with engine.begin() as connection:
+        connection.execute(
+            bqsaved.insert(),
+            [
+                {
+                    "BQSCRTDTS": timestamp,
+                    "BQSUPDDTS": timestamp,
+                    "BQSUSR": "migration-test",
+                    "BQSNAM": "Legacy defaults",
+                    "BQSLENTYP": "natural person",
+                    "BQSSUBCAT": "natural_person_all",
+                    "BQSTXYR": "all_available_years",
+                    "BQSAMT": "100.00",
+                    "BQSISNS": ["AT0000A0ETF1", "AT0000A0ETF2"],
+                    "BQSPOSNS": None,
+                },
+                {
+                    "BQSCRTDTS": timestamp,
+                    "BQSUPDDTS": timestamp,
+                    "BQSUSR": "migration-test",
+                    "BQSNAM": "Ordered positions",
+                    "BQSLENTYP": "business",
+                    "BQSSUBCAT": "business_all",
+                    "BQSTXYR": "2025",
+                    "BQSAMT": "250.00",
+                    "BQSISNS": None,
+                    "BQSPOSNS": ordered_positions,
+                },
+            ],
+        )
+        rows = (
+            connection.execute(
+                sa.select(bqsaved.c.BQSNAM, bqsaved.c.BQSISNS, bqsaved.c.BQSPOSNS).order_by(
+                    bqsaved.c.BQSNAM
+                )
+            )
+            .mappings()
+            .all()
+        )
+    assert rows[0]["BQSNAM"] == "Legacy defaults"
+    assert rows[0]["BQSISNS"] == ["AT0000A0ETF1", "AT0000A0ETF2"]
+    assert rows[0]["BQSPOSNS"] is None
+    assert rows[1]["BQSNAM"] == "Ordered positions"
+    assert rows[1]["BQSPOSNS"] == ordered_positions
     engine.dispose()
 
 

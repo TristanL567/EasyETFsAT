@@ -44,6 +44,7 @@ def test_saved_business_query_model_exposes_required_columns() -> None:
     assert BQSAVED.note.property.columns[0].name == "BQSNOTE"
     assert BQSAVED.default_isins.property.columns[0].name == "BQSISNS"
     assert BQSAVED.selected_tax_fields.property.columns[0].name == "BQSTXFLDS"
+    assert BQSAVED.ordered_positions.property.columns[0].name == "BQSPOSNS"
 
 
 def test_saved_business_query_unique_name_is_scoped_to_owner() -> None:
@@ -113,6 +114,7 @@ def test_saved_business_query_optional_fields_accept_null_and_structured_lists()
             note=None,
             default_isins=None,
             selected_tax_fields=None,
+            ordered_positions=None,
         )
         with_structured_lists = BQSAVED(
             owner_username="alice",
@@ -124,6 +126,10 @@ def test_saved_business_query_optional_fields_accept_null_and_structured_lists()
             note="Run for model portfolio",
             default_isins=["AT0000A0ETF1", "AT0000A0ETF2"],
             selected_tax_fields=["K11", "K61"],
+            ordered_positions=[
+                {"isin": "AT0000A0ETF2", "amount": "3.5"},
+                {"isin": "AT0000A0ETF1", "amount": "2"},
+            ],
         )
         session.add_all([no_optional_values, with_structured_lists])
         session.commit()
@@ -131,9 +137,32 @@ def test_saved_business_query_optional_fields_accept_null_and_structured_lists()
         assert no_optional_values.note is None
         assert no_optional_values.default_isins is None
         assert no_optional_values.selected_tax_fields is None
+        assert no_optional_values.ordered_positions is None
         assert with_structured_lists.note == "Run for model portfolio"
         assert with_structured_lists.default_isins == ["AT0000A0ETF1", "AT0000A0ETF2"]
         assert with_structured_lists.selected_tax_fields == ["K11", "K61"]
+        assert with_structured_lists.ordered_positions == [
+            {"isin": "AT0000A0ETF2", "amount": "3.5"},
+            {"isin": "AT0000A0ETF1", "amount": "2"},
+        ]
+
+
+def test_saved_business_query_preserves_legacy_defaults_without_ordered_positions() -> None:
+    with _create_bqsaved_session() as session:
+        saved_query = BQSAVED(
+            owner_username="alice",
+            query_name="Legacy defaults",
+            legal_entity_type="natural person",
+            subcategory_key="natural_person_all",
+            tax_year_filter=ALL_AVAILABLE_YEARS,
+            amount=Decimal("100.00"),
+            default_isins=["AT0000A0ETF1", "AT0000A0ETF2"],
+        )
+        session.add(saved_query)
+        session.commit()
+
+        assert saved_query.default_isins == ["AT0000A0ETF1", "AT0000A0ETF2"]
+        assert saved_query.ordered_positions is None
 
 
 def test_saved_business_query_can_store_single_selected_tax_field() -> None:

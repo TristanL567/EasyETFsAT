@@ -53,3 +53,4 @@ class BQSAVED(IdTimestampMixin, Base):
     note: Mapped[str | None] = mapped_column("BQSNOTE", Text)
     default_isins: Mapped[list[str] | None] = mapped_column("BQSISNS", _list_json_type())
     selected_tax_fields: Mapped[list[str] | None] = mapped_column("BQSTXFLDS", _list_json_type())
+    ordered_positions: Mapped[list[dict[str, str]] | None] = mapped_column("BQSPOSNS", _list_json_type())
