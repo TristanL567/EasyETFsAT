@@ -79,16 +79,100 @@
               <p class="field-error" id="query-name-error">{{ business_query_errors.query_name }}</p>
               {% endif %}
 
-              <label for="isins">ISIN input area</label>
-              <textarea
-                id="isins"
-                name="isins"
-                rows="6"
-                placeholder="Enter one ISIN per line"
-                {% if business_query_errors.isins %}aria-invalid="true" aria-describedby="isins-error"{% endif %}
-              >{{ business_query_form.isins }}</textarea>
+              <input type="hidden" name="isins" value="{{ business_query_form.isins }}">
+              <input type="hidden" name="amount" value="{{ business_query_form.amount }}">
+              <div
+                class="position-entry{% if business_query_form.position_input_mode == "paste" %} paste-active{% endif %}"
+                {% if business_query_errors.positions or business_query_errors.isins %}aria-invalid="true" aria-describedby="positions-error"{% endif %}
+              >
+                <div class="position-entry-header">
+                  <h2>ISIN amounts</h2>
+                  <fieldset class="position-mode-toggle" aria-label="ISIN entry mode">
+                    <label for="position-mode-table">
+                      <input
+                        id="position-mode-table"
+                        name="position_input_mode"
+                        type="radio"
+                        value="table"
+                        {% if business_query_form.position_input_mode != "paste" %}checked{% endif %}
+                      >
+                      Table
+                    </label>
+                    <label for="position-mode-paste">
+                      <input
+                        id="position-mode-paste"
+                        name="position_input_mode"
+                        type="radio"
+                        value="paste"
+                        {% if business_query_form.position_input_mode == "paste" %}checked{% endif %}
+                      >
+                      Paste
+                    </label>
+                  </fieldset>
+                </div>
+                <div class="position-table-panel">
+                  <div class="result-table-wrap position-table-wrap">
+                    <table class="result-table position-input-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">ISIN</th>
+                          <th scope="col">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in business_query_form.position_rows %}
+                        <tr>
+                          <td>
+                            <input
+                              id="position-isin-{{ loop.index }}"
+                              name="position_isin"
+                              type="text"
+                              autocomplete="off"
+                              placeholder="IE00BMTX1Y45"
+                              value="{{ row.isin }}"
+                              {% if row.isin_error %}aria-invalid="true" aria-describedby="position-isin-{{ loop.index }}-error"{% endif %}
+                            >
+                            {% if row.isin_error %}
+                            <p class="field-error" id="position-isin-{{ loop.index }}-error">{{ row.isin_error }}</p>
+                            {% endif %}
+                          </td>
+                          <td>
+                            <input
+                              id="position-amount-{{ loop.index }}"
+                              name="position_amount"
+                              type="number"
+                              inputmode="decimal"
+                              min="0"
+                              step="0.01"
+                              placeholder="10000.00"
+                              value="{{ row.amount }}"
+                              {% if row.amount_error %}aria-invalid="true" aria-describedby="position-amount-{{ loop.index }}-error"{% endif %}
+                            >
+                            {% if row.amount_error %}
+                            <p class="field-error" id="position-amount-{{ loop.index }}-error">{{ row.amount_error }}</p>
+                            {% endif %}
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="position-paste-panel">
+                  <label for="position-paste">Paste ISIN and amount rows</label>
+                  <textarea
+                    id="position-paste"
+                    name="position_paste"
+                    rows="6"
+                    placeholder="IE00BMTX1Y45 10000.00"
+                  >{{ business_query_form.position_paste }}</textarea>
+                </div>
+              </div>
               {% if business_query_errors.isins %}
               <p class="field-error" id="isins-error">{{ business_query_errors.isins }}</p>
+              {% endif %}
+              {% if business_query_errors.positions %}
+              <p class="field-error" id="positions-error">{{ business_query_errors.positions }}</p>
               {% endif %}
 
               <label for="legal-entity-type">Legal entity type</label>
@@ -166,18 +250,6 @@
               <p class="field-error" id="tax-fields-error">{{ business_query_errors.tax_fields }}</p>
               {% endif %}
 
-              <label for="amount">Amount</label>
-              <input
-                id="amount"
-                name="amount"
-                type="number"
-                inputmode="decimal"
-                min="0"
-                step="0.01"
-                placeholder="10000.00"
-                value="{{ business_query_form.amount }}"
-                {% if business_query_errors.amount %}aria-invalid="true" aria-describedby="amount-error"{% endif %}
-              >
               {% if business_query_errors.amount %}
               <p class="field-error" id="amount-error">{{ business_query_errors.amount }}</p>
               {% endif %}

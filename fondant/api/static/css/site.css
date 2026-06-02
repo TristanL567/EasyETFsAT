@@ -275,6 +275,81 @@ h1 {
   resize: vertical;
 }
 
+.position-entry {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.position-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.position-entry-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.position-mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0.25rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.position-mode-toggle label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0 0.65rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.position-mode-toggle label:has(input:checked) {
+  background: #dff3ef;
+  color: var(--accent-strong);
+}
+
+.position-table-panel {
+  display: block;
+}
+
+.position-paste-panel {
+  display: none;
+}
+
+.position-entry:has(#position-mode-paste:checked) .position-table-panel,
+.position-entry.paste-active .position-table-panel {
+  display: none;
+}
+
+.position-entry:has(#position-mode-paste:checked) .position-paste-panel,
+.position-entry.paste-active .position-paste-panel {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.position-table-wrap {
+  margin: 0;
+}
+
+.position-input-table input {
+  min-width: 12rem;
+  min-height: 2.5rem;
+}
+
 .business-query-group-form h2 {
   margin: 0;
   font-size: 1rem;

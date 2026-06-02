@@ -25,6 +25,7 @@ from fondant.business_query import (
     DEFAULT_SUBCATEGORY_KEYS,
     DEFAULT_TAX_FIELDS,
     BusinessQueryInput,
+    BusinessQueryPosition,
     BusinessQueryResult,
     execute_business_query,
 )
@@ -166,6 +167,9 @@ def _empty_business_query_form() -> dict[str, object]:
     return {
         "query_name": "",
         "isins": "",
+        "position_input_mode": "table",
+        "position_paste": "",
+        "position_rows": _blank_business_query_position_rows(),
         "legal_entity_type": LEGAL_ENTITY_TYPES[0],
         "subcategory_key": DEFAULT_SUBCATEGORY_KEYS[LEGAL_ENTITY_TYPES[0]],
         "tax_year_filter": ALL_AVAILABLE_YEARS,
@@ -181,7 +185,29 @@ def _prefilled_business_query_form(isins: str) -> dict[str, object]:
     normalized_isins = _normalize_isin_input(isins)
     if normalized_isins:
         form["isins"] = "\n".join(normalized_isins)
+        form["position_rows"] = _business_query_position_rows_from_values(
+            tuple((isin, "") for isin in normalized_isins)
+        )
     return form
+
+
+def _blank_business_query_position_rows() -> list[dict[str, str]]:
+    return [
+        {"isin": "", "amount": "", "isin_error": "", "amount_error": ""},
+        {"isin": "", "amount": "", "isin_error": "", "amount_error": ""},
+        {"isin": "", "amount": "", "isin_error": "", "amount_error": ""},
+    ]
+
+
+def _business_query_position_rows_from_values(
+    values: tuple[tuple[str, str], ...],
+) -> list[dict[str, str]]:
+    rows = [
+        {"isin": isin, "amount": amount, "isin_error": "", "amount_error": ""}
+        for isin, amount in values
+    ]
+    rows.append({"isin": "", "amount": "", "isin_error": "", "amount_error": ""})
+    return rows
 
 
 def _normalize_isin_input(value: str) -> list[str]:
@@ -197,6 +223,8 @@ def _validate_business_query_form(
     errors: dict[str, str] = {}
     query_name = str(form_values["query_name"]).strip()
     normalized_isins = _normalize_isin_input(str(form_values["isins"]))
+    positions = cast(tuple[dict[str, object], ...], form_values.get("positions", ()))
+    position_row_errors = bool(form_values.get("position_row_errors", False))
     legal_entity_type = str(form_values["legal_entity_type"])
     subcategory_key = str(form_values["subcategory_key"]).strip()
     tax_year_filter = str(form_values["tax_year_filter"]).strip()
@@ -206,6 +234,12 @@ def _validate_business_query_form(
 
     if not query_name:
         errors["query_name"] = "Enter a custom query name."
+
+    if position_row_errors:
+        errors["positions"] = "Fix the highlighted ISIN rows."
+
+    if positions:
+        normalized_isins = [str(position["isin"]) for position in positions]
 
     if not normalized_isins and require_isins:
         errors["isins"] = "Enter at least one ISIN."
@@ -256,6 +290,7 @@ def _validate_business_query_form(
         "query_name": query_name,
         "isins": normalized_isins,
         "isins_text": "\n".join(normalized_isins),
+        "positions": positions,
         "legal_entity_type": legal_entity_type,
         "subcategory_key": subcategory_key,
         "tax_year_filter": tax_year_filter,
@@ -272,9 +307,23 @@ def _business_query_form_values(form: Any) -> dict[str, object]:
     tax_fields = _normalize_business_query_tax_fields(raw_tax_fields)
     if not tax_fields and not has_tax_field_control:
         tax_fields = BUSINESS_QUERY_DEFAULT_TAX_FIELDS
-    return {
+    position_input_mode = str(form.get("position_input_mode", "table") or "table")
+    if position_input_mode not in {"table", "paste"}:
+        position_input_mode = "table"
+    position_paste = str(form.get("position_paste", ""))
+    position_rows, position_row_errors, positions = _business_query_position_values(
+        form,
+        position_input_mode=position_input_mode,
+        fallback_amount=str(form.get("amount", "")),
+    )
+    values = {
         "query_name": str(form.get("query_name", "")),
         "isins": str(form.get("isins", "")),
+        "position_input_mode": position_input_mode,
+        "position_paste": position_paste,
+        "position_rows": position_rows,
+        "position_row_errors": position_row_errors,
+        "positions": positions,
         "legal_entity_type": legal_entity_type,
         "subcategory_key": str(
             form.get("subcategory_key", "") or DEFAULT_SUBCATEGORY_KEYS.get(legal_entity_type, "")
@@ -284,12 +333,115 @@ def _business_query_form_values(form: Any) -> dict[str, object]:
         "amount": str(form.get("amount", "")),
         "note": str(form.get("note", "")),
     }
+    if positions:
+        values["isins"] = "\n".join(str(position["isin"]) for position in positions)
+        values["amount"] = str(positions[0]["amount"])
+    elif position_row_errors:
+        values["isins"] = "\n".join(
+            row["isin"] for row in position_rows if str(row.get("isin", "")).strip()
+        )
+        first_amount = next(
+            (row["amount"] for row in position_rows if str(row.get("amount", "")).strip()),
+            "",
+        )
+        if first_amount:
+            values["amount"] = first_amount
+    return values
+
+
+def _business_query_position_values(
+    form: Any,
+    *,
+    position_input_mode: str,
+    fallback_amount: str,
+) -> tuple[list[dict[str, str]], bool, tuple[dict[str, object], ...]]:
+    if position_input_mode == "paste":
+        raw_pairs = _parse_business_query_position_paste(str(form.get("position_paste", "")))
+    else:
+        raw_isins = form.getlist("position_isin") if hasattr(form, "getlist") else ()
+        raw_amounts = form.getlist("position_amount") if hasattr(form, "getlist") else ()
+        raw_pairs = tuple(
+            (str(raw_isin), str(raw_amounts[index]) if index < len(raw_amounts) else "")
+            for index, raw_isin in enumerate(raw_isins)
+        )
+
+    if not raw_pairs and str(form.get("isins", "")).strip():
+        raw_pairs = tuple((isin, fallback_amount) for isin in _normalize_isin_input(str(form.get("isins", ""))))
+
+    rows: list[dict[str, str]] = []
+    positions: list[dict[str, object]] = []
+    seen: set[str] = set()
+    has_errors = False
+    for raw_isin, raw_amount in raw_pairs:
+        isin_text = raw_isin.strip().upper()
+        amount_text = raw_amount.strip()
+        if not isin_text and not amount_text:
+            continue
+
+        row = {"isin": isin_text or raw_isin.strip(), "amount": amount_text, "isin_error": "", "amount_error": ""}
+        if not isin_text:
+            row["isin_error"] = "Enter an ISIN for this row."
+        elif not ISIN_PATTERN.fullmatch(isin_text):
+            row["isin_error"] = "Enter an ISIN-like value such as IE00BMTX1Y45."
+        elif isin_text in seen:
+            row["isin_error"] = "Remove duplicate ISIN rows."
+        else:
+            seen.add(isin_text)
+
+        amount: Decimal | None = None
+        if not amount_text:
+            row["amount_error"] = "Enter an amount for this ISIN."
+        else:
+            try:
+                amount = Decimal(amount_text)
+            except InvalidOperation:
+                row["amount_error"] = "Enter a numeric amount."
+            else:
+                if not amount.is_finite():
+                    row["amount_error"] = "Enter a numeric amount."
+                elif amount <= 0:
+                    row["amount_error"] = "Enter a positive amount."
+
+        if row["isin_error"] or row["amount_error"]:
+            has_errors = True
+        else:
+            positions.append({"isin": isin_text, "amount": amount})
+        rows.append(row)
+
+    if rows:
+        rows.append({"isin": "", "amount": "", "isin_error": "", "amount_error": ""})
+    else:
+        rows = _blank_business_query_position_rows()
+    return rows, has_errors, tuple(positions) if not has_errors else ()
+
+
+def _parse_business_query_position_paste(raw_value: str) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    for line in raw_value.splitlines():
+        line_text = line.strip()
+        if not line_text:
+            continue
+        parts = [part for part in re.split(r"[\s,;]+", line_text) if part]
+        if not parts:
+            continue
+        pairs.append((parts[0], parts[1] if len(parts) > 1 else ""))
+    return tuple(pairs)
 
 
 def _normalized_business_query_form(preview: dict[str, object]) -> dict[str, object]:
+    positions = cast(tuple[dict[str, object], ...], preview.get("positions", ()))
     return {
         "query_name": str(preview["query_name"]),
         "isins": str(preview["isins_text"]),
+        "position_input_mode": "table",
+        "position_paste": "",
+        "position_rows": _business_query_position_rows_from_values(
+            tuple((str(position["isin"]), str(position["amount"])) for position in positions)
+        )
+        if positions
+        else _business_query_position_rows_from_values(
+            tuple((isin, str(preview["amount"])) for isin in cast(list[str], preview["isins"]))
+        ),
         "legal_entity_type": str(preview["legal_entity_type"]),
         "subcategory_key": str(preview["subcategory_key"]),
         "tax_year_filter": str(preview["tax_year_filter"]),
@@ -305,6 +457,9 @@ def _business_query_form_from_saved_query(saved_query: BQSAVED) -> dict[str, obj
         {
             "query_name": saved_query.query_name,
             "isins": "\n".join(saved_query.default_isins or []),
+            "position_rows": _business_query_position_rows_from_values(
+                tuple((isin, str(saved_query.amount)) for isin in saved_query.default_isins or [])
+            ),
             "legal_entity_type": saved_query.legal_entity_type,
             "subcategory_key": saved_query.subcategory_key,
             "tax_year_filter": saved_query.tax_year_filter,
@@ -334,6 +489,10 @@ def _normalize_business_query_tax_fields(raw_tax_fields: object) -> tuple[str, .
 
 
 def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQueryInput:
+    positions = tuple(
+        BusinessQueryPosition(isin=str(position["isin"]), amount=Decimal(str(position["amount"])))
+        for position in cast(tuple[dict[str, object], ...], preview.get("positions", ()))
+    )
     return BusinessQueryInput(
         query_name=str(preview["query_name"]),
         isins=tuple(cast(list[str], preview["isins"])),
@@ -342,6 +501,7 @@ def _business_query_input_from_preview(preview: dict[str, object]) -> BusinessQu
         tax_year_filter=str(preview["tax_year_filter"]),
         tax_fields=tuple(cast(tuple[str, ...], preview["tax_fields"])),
         amount_multiplier=Decimal(str(preview["amount"])),
+        positions=positions,
     )
 
 

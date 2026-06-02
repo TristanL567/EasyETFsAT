@@ -326,7 +326,13 @@ async def test_business_query_form_renders_for_authenticated_users(
         ) in response.text
         assert '<label for="query-name">Custom query name</label>' in response.text
         assert 'name="query_name"' in response.text
-        assert '<label for="isins">ISIN input area</label>' in response.text
+        assert "<h2>ISIN amounts</h2>" in response.text
+        assert 'class="position-mode-toggle" aria-label="ISIN entry mode"' in response.text
+        assert 'id="position-mode-table"' in response.text
+        assert 'id="position-mode-paste"' in response.text
+        assert 'name="position_isin"' in response.text
+        assert 'name="position_amount"' in response.text
+        assert 'id="position-paste"' in response.text
         assert 'name="isins"' in response.text
         assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
         assert '<label for="subcategory-key">Subcategory</label>' in response.text
@@ -338,7 +344,6 @@ async def test_business_query_form_renders_for_authenticated_users(
             assert f'id="tax-field-{tax_line.line_code}"' in response.text
             assert f'value="{tax_line.line_code}"' in response.text
             assert f"{tax_line.line_code} - {tax_line.name_de}" in response.text
-        assert '<label for="amount">Amount</label>' in response.text
         assert 'name="amount"' in response.text
         assert '<label for="query-note">Note</label>' in response.text
         assert 'name="note"' in response.text
@@ -464,7 +469,8 @@ async def test_business_query_get_prefills_selected_isin_from_search_link(
 
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
-    assert ">IE00BMTX1Y45</textarea>" in response.text
+    assert 'name="position_isin"' in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
 
 
 @pytest.mark.asyncio
@@ -587,7 +593,9 @@ async def test_authenticated_user_can_save_business_query_with_structured_fields
     assert "<h2>Query results</h2>" not in response.text
     assert "<h2>Saved queries</h2>" not in response.text
     assert 'value="Monthly review"' in response.text
-    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="LU1681044993"' in response.text
+    assert response.text.count('value="250.75"') >= 2
     assert ">Run for model portfolio</textarea>" in response.text
 
     async with session_factory() as session:
@@ -1124,7 +1132,9 @@ async def test_current_user_can_load_saved_business_query_with_structured_fields
     assert response.status_code == 200
     assert "Saved query loaded." in response.text
     assert 'value="Loaded monthly rule"' in response.text
-    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="LU1681044993"' in response.text
+    assert response.text.count('value="250.7500000000"') >= 2
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="business_bv_legal_person" selected>BV jur. Person</option>' in response.text
     assert '<option value="2025" selected>2025</option>' in response.text
@@ -1199,7 +1209,7 @@ async def test_loaded_saved_business_query_can_replace_isins_and_rerun_existing_
 
     assert rerun_response.status_code == 200
     assert "<h2>Query results</h2>" in rerun_response.text
-    assert ">LU1681044993</textarea>" in rerun_response.text
+    assert 'value="LU1681044993"' in rerun_response.text
     assert len(service_calls) == 1
     query = service_calls[0][1]
     assert query.query_name == "Rerun saved rule"
@@ -1905,7 +1915,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
     assert 'id="query-name"' in response.text
     assert 'value="Monthly review"' in response.text
-    assert ">IE00BMTX1Y45\nLU1681044993</textarea>" in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="LU1681044993"' in response.text
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="business_bv_without_option" selected>BV ohne Option</option>' in response.text
     assert '<option value="2025" selected>2025</option>' in response.text
@@ -1957,6 +1968,156 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert query.tax_year_filter == "2025"
     assert query.tax_fields == ("K40", "K61", "K62")
     assert query.amount_multiplier == Decimal("1000.50")
+
+
+@pytest.mark.asyncio
+async def test_business_query_structured_row_post_passes_positions_to_service(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        content=urlencode(
+            [
+                ("query_name", "Position rows"),
+                ("position_input_mode", "table"),
+                ("position_isin", "ie00bmtx1y45"),
+                ("position_amount", "2"),
+                ("position_isin", "lu1681044993"),
+                ("position_amount", "3.5"),
+                ("position_isin", ""),
+                ("position_amount", ""),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_with_option"),
+                ("tax_year_filter", "2025"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Query results</h2>" in response.text
+    assert response.text.index('value="IE00BMTX1Y45"') < response.text.index(
+        'value="LU1681044993"'
+    )
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.isins == ("IE00BMTX1Y45", "LU1681044993")
+    assert query.amount_multiplier == Decimal("2")
+    assert [(position.isin, position.amount) for position in query.positions] == [
+        ("IE00BMTX1Y45", Decimal("2")),
+        ("LU1681044993", Decimal("3.5")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_business_query_paste_mode_post_parses_rows_before_service(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service_calls = []
+
+    async def fake_execute_business_query(
+        session: object,
+        query: BusinessQueryInput,
+    ) -> BusinessQueryResult:
+        service_calls.append((session, query))
+        return BusinessQueryResult(query=query, rows=())
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fake_execute_business_query)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        data={
+            "query_name": "Pasted rows",
+            "position_input_mode": "paste",
+            "position_paste": "lu1681044993, 4\nIE00BMTX1Y45\t5.25",
+            "legal_entity_type": "natural person",
+            "subcategory_key": "natural_person_all",
+            "tax_year_filter": "all_available_years",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Query results</h2>" in response.text
+    assert 'value="LU1681044993"' in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert len(service_calls) == 1
+    query = service_calls[0][1]
+    assert query.isins == ("LU1681044993", "IE00BMTX1Y45")
+    assert [(position.isin, position.amount) for position in query.positions] == [
+        ("LU1681044993", Decimal("4")),
+        ("IE00BMTX1Y45", Decimal("5.25")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_business_query_invalid_position_rows_preserve_values_and_errors(
+    web_client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(session: object, query: BusinessQueryInput) -> BusinessQueryResult:
+        raise AssertionError("invalid BusinessQuery row POST must not call the service")
+
+    monkeypatch.setattr(web_routes, "execute_business_query", fail_if_called)
+
+    login_response = await web_client.post(
+        "/login",
+        data={"username": "admin", "password": "password"},
+    )
+    assert login_response.status_code == 303
+
+    response = await web_client.post(
+        "/app/business-query",
+        content=urlencode(
+            [
+                ("query_name", "Bad rows"),
+                ("position_input_mode", "table"),
+                ("position_isin", "not-an-isin"),
+                ("position_amount", "abc"),
+                ("position_isin", "IE00BMTX1Y45"),
+                ("position_amount", "-1"),
+                ("legal_entity_type", "business"),
+                ("subcategory_key", "business_bv_with_option"),
+                ("tax_year_filter", "2025"),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert "<h2>Query results</h2>" not in response.text
+    assert 'value="NOT-AN-ISIN"' in response.text
+    assert 'value="abc"' in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'value="-1"' in response.text
+    assert "Fix the highlighted ISIN rows." in response.text
+    assert "Enter an ISIN-like value such as IE00BMTX1Y45." in response.text
+    assert "Enter a numeric amount." in response.text
+    assert "Enter a positive amount." in response.text
 
 
 @pytest.mark.asyncio
@@ -2359,7 +2520,7 @@ async def test_business_query_valid_post_with_no_rows_renders_empty_state(
     assert response.status_code == 200
     assert "No tax rows matched the submitted ISINs." in response.text
     assert 'value="No rows"' in response.text
-    assert ">IE00BMTX1Y45</textarea>" in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
     assert len(service_calls) == 1
 
 
@@ -2726,7 +2887,7 @@ async def test_business_query_invalid_post_preserves_values_and_shows_errors(
 
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
-    assert ">not-an-isin</textarea>" in response.text
+    assert 'value="NOT-AN-ISIN"' in response.text
     assert "Enter a custom query name." in response.text
     assert "Enter ISIN-like values such as IE00BMTX1Y45." in response.text
     assert "Choose a supported legal entity type." in response.text
@@ -2832,7 +2993,7 @@ async def test_business_query_invalid_subcategory_and_tax_year_show_validation_e
 
     assert response.status_code == 200
     assert 'value="Invalid filters"' in response.text
-    assert ">IE00BMTX1Y45</textarea>" in response.text
+    assert 'value="IE00BMTX1Y45"' in response.text
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="natural_person_all" selected>All private investor categories</option>' in response.text
     assert "Choose a category that matches the selected legal entity type." in response.text
@@ -2922,7 +3083,7 @@ async def test_business_query_invalid_export_preserves_values_and_shows_errors(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
-    assert ">not-an-isin</textarea>" in response.text
+    assert 'value="NOT-AN-ISIN"' in response.text
     assert "Enter a custom query name." in response.text
     assert "Enter ISIN-like values such as IE00BMTX1Y45." in response.text
     assert "Choose a supported legal entity type." in response.text
