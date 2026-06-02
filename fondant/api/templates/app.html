@@ -87,29 +87,9 @@
               >
                 <div class="position-entry-header">
                   <h2>ISIN amounts</h2>
-                  <fieldset class="position-mode-toggle" aria-label="ISIN entry mode">
-                    <label for="position-mode-table">
-                      <input
-                        id="position-mode-table"
-                        name="position_input_mode"
-                        type="radio"
-                        value="table"
-                        {% if business_query_form.position_input_mode == "table" %}checked{% endif %}
-                      >
-                      Table view
-                    </label>
-                    <label for="position-mode-box">
-                      <input
-                        id="position-mode-box"
-                        name="position_input_mode"
-                        type="radio"
-                        value="box"
-                        {% if business_query_form.position_input_mode == "box" %}checked{% endif %}
-                      >
-                      Box view
-                    </label>
-                  </fieldset>
                 </div>
+                <input type="hidden" name="position_input_mode" value="{{ business_query_form.position_input_mode }}">
+                {% if business_query_form.position_input_mode == "table" %}
                 <div class="position-table-panel">
                   <div class="result-table-wrap position-table-wrap">
                     <table class="result-table position-input-table">
@@ -158,6 +138,7 @@
                     </table>
                   </div>
                 </div>
+                {% else %}
                 <div class="position-box-panel">
                   <label for="position-paste">Box view ISIN and amount rows</label>
                   <textarea
@@ -168,6 +149,7 @@
                   >{{ business_query_form.position_paste }}</textarea>
                   <p class="field-note">Enter one row per ISIN. Separate ISIN and amount with a comma, space, semicolon, or tab.</p>
                 </div>
+                {% endif %}
               </div>
               {% if business_query_errors.isins %}
               <p class="field-error" id="isins-error">{{ business_query_errors.isins }}</p>

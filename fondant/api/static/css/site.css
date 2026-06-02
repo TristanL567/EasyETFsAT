@@ -297,47 +297,11 @@ h1 {
   font-size: 1rem;
 }
 
-.position-mode-toggle {
-  display: inline-flex;
-  gap: 0.25rem;
-  margin: 0;
-  padding: 0.25rem;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-.position-mode-toggle label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 2rem;
-  padding: 0 0.65rem;
-  border-radius: 4px;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-
-.position-mode-toggle label:has(input:checked) {
-  background: #dff3ef;
-  color: var(--accent-strong);
-}
-
 .position-table-panel {
   display: block;
 }
 
 .position-box-panel {
-  display: none;
-}
-
-.position-entry:has(#position-mode-box:checked) .position-table-panel,
-.position-entry.box-active .position-table-panel {
-  display: none;
-}
-
-.position-entry:has(#position-mode-box:checked) .position-box-panel,
-.position-entry.box-active .position-box-panel {
   display: grid;
   gap: 0.5rem;
 }

@@ -333,13 +333,14 @@ async def test_business_query_form_renders_for_authenticated_users(
         assert 'name="query_name"' in response.text
         assert "<h2>ISIN amounts</h2>" in response.text
         assert 'class="position-entry box-active"' in response.text
-        assert 'class="position-mode-toggle" aria-label="ISIN entry mode"' in response.text
-        assert 'id="position-mode-table"' in response.text
-        assert 'id="position-mode-box"' in response.text
+        assert 'class="position-mode-toggle" aria-label="ISIN entry mode"' not in response.text
+        assert 'id="position-mode-table"' not in response.text
+        assert 'id="position-mode-box"' not in response.text
+        assert 'name="position_input_mode" value="box"' in response.text
         assert 'value="box"' in response.text
         assert "Box view" in response.text
-        assert 'name="position_isin"' in response.text
-        assert 'name="position_amount"' in response.text
+        assert 'name="position_isin"' not in response.text
+        assert 'name="position_amount"' not in response.text
         assert 'id="position-paste"' in response.text
         assert 'name="isins"' in response.text
         assert '<label for="legal-entity-type">Legal entity type</label>' in response.text
@@ -442,9 +443,13 @@ async def test_business_query_input_view_setting_persists_in_cookie(
     response = await web_client.get("/app/business-query/new")
 
     assert response.status_code == 200
-    assert 'id="position-mode-table"' in response.text
-    assert 'id="position-mode-box"' in response.text
+    assert 'id="position-mode-table"' not in response.text
+    assert 'id="position-mode-box"' not in response.text
     assert 'class="position-entry box-active"' not in response.text
+    assert 'name="position_input_mode" value="table"' in response.text
+    assert 'name="position_isin"' in response.text
+    assert 'name="position_amount"' in response.text
+    assert 'id="position-paste"' not in response.text
 
 
 @pytest.mark.asyncio
@@ -526,8 +531,9 @@ async def test_business_query_get_prefills_selected_isin_from_search_link(
 
     assert response.status_code == 200
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
-    assert 'name="position_isin"' in response.text
-    assert 'value="IE00BMTX1Y45"' in response.text
+    assert 'name="position_isin"' not in response.text
+    assert 'id="position-paste"' in response.text
+    assert "IE00BMTX1Y45" in response.text
 
 
 @pytest.mark.asyncio
@@ -650,9 +656,10 @@ async def test_authenticated_user_can_save_business_query_with_structured_fields
     assert "<h2>Query results</h2>" not in response.text
     assert "<h2>Saved queries</h2>" not in response.text
     assert 'value="Monthly review"' in response.text
-    assert 'value="IE00BMTX1Y45"' in response.text
-    assert 'value="LU1681044993"' in response.text
-    assert response.text.count('value="250.75"') >= 2
+    assert "IE00BMTX1Y45" in response.text
+    assert "LU1681044993" in response.text
+    assert 'value="250.75"' in response.text
+    assert response.text.count("250.75") >= 2
     assert ">Run for model portfolio</textarea>" in response.text
 
     async with session_factory() as session:
@@ -1189,9 +1196,10 @@ async def test_current_user_can_load_saved_business_query_with_structured_fields
     assert response.status_code == 200
     assert "Saved query loaded." in response.text
     assert 'value="Loaded monthly rule"' in response.text
-    assert 'value="IE00BMTX1Y45"' in response.text
-    assert 'value="LU1681044993"' in response.text
-    assert response.text.count('value="250.7500000000"') >= 2
+    assert "IE00BMTX1Y45" in response.text
+    assert "LU1681044993" in response.text
+    assert 'value="250.7500000000"' in response.text
+    assert response.text.count("250.7500000000") >= 2
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="business_bv_legal_person" selected>BV jur. Person</option>' in response.text
     assert '<option value="2025" selected>2025</option>' in response.text
@@ -1972,8 +1980,8 @@ async def test_business_query_valid_post_calls_service_and_renders_result_rows(
     assert "<title>BusinessQuery - EasyETFsAT</title>" in response.text
     assert 'id="query-name"' in response.text
     assert 'value="Monthly review"' in response.text
-    assert 'value="IE00BMTX1Y45"' in response.text
-    assert 'value="LU1681044993"' in response.text
+    assert "IE00BMTX1Y45" in response.text
+    assert "LU1681044993" in response.text
     assert '<option value="business" selected>business</option>' in response.text
     assert '<option value="business_bv_without_option" selected>BV ohne Option</option>' in response.text
     assert '<option value="2025" selected>2025</option>' in response.text
@@ -2120,8 +2128,8 @@ async def test_business_query_box_view_post_parses_rows_before_service(
 
     assert response.status_code == 200
     assert "<h2>Query results</h2>" in response.text
-    assert 'value="LU1681044993"' in response.text
-    assert 'value="IE00BMTX1Y45"' in response.text
+    assert "LU1681044993" in response.text
+    assert "IE00BMTX1Y45" in response.text
     assert len(service_calls) == 1
     query = service_calls[0][1]
     assert query.isins == ("LU1681044993", "IE00BMTX1Y45")
