@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 
 from fondant.oekb.models import OeKBReportDetailResponse, OeKBReportListItem
-from fondant.oekb.parser import build_sourceage_result, build_sourceage_values
+from fondant.oekb.parser import (
+    build_sourceage_result,
+    build_sourceage_values,
+    build_sourcerpt_values,
+)
 
 
 def _report() -> OeKBReportListItem:
@@ -226,3 +231,51 @@ def test_build_sourceage_values_leaves_missing_expected_value_as_none() -> None:
 
     assert values["steuerpflichtige_einkuenfte_pv_mit"] == Decimal("1.0")
     assert values["steuerpflichtige_einkuenfte_pv_ohne"] is None
+
+
+def _list_item(**extra: str) -> OeKBReportListItem:
+    return OeKBReportListItem(stmId=626766, isin="IE000XZSV718", statusCode="FIN", versionsNr=5, **extra)
+
+
+def test_build_sourcerpt_values_dates_report_by_zufluss_not_eintragezeit() -> None:
+    values = build_sourcerpt_values(
+        "IE000XZSV718",
+        _list_item(eintragezeit="2025-10-24T08:41:52.336", zufluss="2025-10-27T00:00:00.000"),
+    )
+
+    assert values["meldg_datum"] == date(2025, 10, 27)
+    assert values["report_year"] == 2025
+    assert values["eintragezeit"] == datetime(2025, 10, 24, 8, 41, 52, 336000)
+    assert values["zufluss"] == date(2025, 10, 27)
+
+
+def test_build_sourcerpt_values_takes_report_year_from_zufluss_across_year_end() -> None:
+    values = build_sourcerpt_values(
+        "IE000XZSV718",
+        _list_item(eintragezeit="2025-12-30T09:00:00.000", zufluss="2026-01-02T00:00:00.000"),
+    )
+
+    assert values["meldg_datum"] == date(2026, 1, 2)
+    assert values["report_year"] == 2026
+
+
+def test_build_sourcerpt_values_falls_back_to_eintragezeit_without_zufluss() -> None:
+    values = build_sourcerpt_values("IE000XZSV718", _list_item(eintragezeit="2025-10-24T08:41:52.336"))
+
+    assert values["meldg_datum"] == date(2025, 10, 24)
+    assert values["report_year"] == 2025
+    assert values["zufluss"] is None
+
+
+def test_build_sourcerpt_values_keeps_explicit_meldedatum_before_zufluss() -> None:
+    values = build_sourcerpt_values(
+        "IE000XZSV718",
+        _list_item(
+            meldeDatum="28.07.2024",
+            eintragezeit="2025-09-30T09:16:24.563",
+            zufluss="2025-10-27T00:00:00.000",
+        ),
+    )
+
+    assert values["meldg_datum"] == date(2024, 7, 28)
+    assert values["report_year"] == 2024

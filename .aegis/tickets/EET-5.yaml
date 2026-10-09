@@ -1,0 +1,41 @@
+id: EET-5
+goal: Newly parsed OeKB reports carry meldg_datum = zufluss when OeKB sends no Meldedatum, and report_year is the year of that same date.
+context: >
+  OeKB's report list sends no meldgDatum or jahr, and the detail answer has no
+  date, so build_sourcerpt_values falls back to eintragezeit (entry day) before
+  zufluss (publication day = steuerlicher Zufluss per InvFG 2011 § 186, FMV 2015
+  § 5, OeKB spec START field 12). TAXMDT drives the FX join of V2_TAXDATHOMCCY,
+  so dollar reports use the wrong ECB rate. Keep explicit Meldedatum fields
+  first and eintragezeit as last resort; eintragezeit stays stored on its own.
+  GitHub issue #5, part of epic #4.
+epic: EPIC-4
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-5.yaml
+  - fondant/oekb/parser.py
+  - tests/test_oekb_parser.py
+  - tests/test_ingestion.py
+must_not_touch:
+  - alembic/
+  - fondant/db/
+  - fondant/ingestion/
+  - fondant/business_query.py
+  - fondant/api/
+  - pyproject.toml
+non_goals:
+  - Correcting reports already stored in the database (issue #6).
+  - Any change to views, migrations, or the V2_TAXDATHOMCCY column set.
+  - Changing how other fields (gueltig_von, gj_beginn, eintragezeit, zufluss) are parsed.
+acceptance_criteria:
+  - A list item without meldgDatum, with eintragezeit 2025-10-24T08:41:52.336 and zufluss 2025-10-27T00:00:00.000, gives meldg_datum 2025-10-27 and report_year 2025, while eintragezeit stays 2025-10-24T08:41:52.336 and zufluss 2025-10-27.
+  - eintragezeit 2025-12-30 and zufluss 2026-01-02 give meldg_datum 2026-01-02 and report_year 2026.
+  - Without zufluss, an item with only eintragezeit still gives meldg_datum and report_year from eintragezeit, as before.
+  - An explicit Meldedatum (meldgDatum/meldedatum/meldeDatum) still wins over zufluss, and report_year is that date's year (tests/test_ingestion.py expectation updated from 2025 to 2024 for meldeDatum 28.07.2024).
+  - The new parser tests fail on the code before the change.
+verify:
+  - .venv/bin/python -m pytest -q tests/test_oekb_parser.py tests/test_ingestion.py
+  - .venv/bin/ruff check fondant/oekb/parser.py tests/test_oekb_parser.py tests/test_ingestion.py
+  - git diff --check
+smoke: []
+manual_checks: []
