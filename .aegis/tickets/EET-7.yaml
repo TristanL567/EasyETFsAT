@@ -1,0 +1,58 @@
+id: EET-7
+goal: ECB reference rates in REFEXC are topped up to the latest ECB date at the start of every update-data run and by a standalone job that previews by default and writes only with --apply.
+context: >
+  REFEXC was only ever loaded by hand and stops at 2026-05-28, so
+  V2_TAXDATHOMCCY has a NULL FXRAT for newer non-EUR reports and EasyRep
+  refuses them. New reports only arrive through update-data runs (web button
+  and the run_update_data_jobs runner), so each run first loads rates from the
+  earliest per-currency latest stored REFEXC date (inclusive) up to today,
+  which also fills gaps left by missed runs. A failed top-up is logged and
+  never blocks ISIN ingestion. No Render cron or other infrastructure (the
+  human chose the top-up). Loading rates into the live database is the
+  operator's call (AEGIS always-stop). GitHub issue #7, standalone.
+epic: null
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-7.yaml
+  - fondant/ingestion/fx_pipeline.py
+  - fondant/update_data.py
+  - fondant/jobs/refresh_ecb_rates.py
+  - tests/test_fx_pipeline.py
+  - tests/test_update_data_jobs.py
+  - tests/test_refresh_ecb_rates_job.py
+  - README.md
+  - Documentation/TECHNICAL_ARCHITECTURE.md
+must_not_touch:
+  - alembic/
+  - fondant/db/
+  - fondant/ecb/
+  - fondant/oekb/
+  - fondant/api/
+  - fondant/business_query.py
+  - pyproject.toml
+  - .env
+non_goals:
+  - Running the top-up against any shared or live database.
+  - A Render cron job, worker, or any other scheduler or infrastructure.
+  - Topping up rates in the fetch_missing_isins or refresh_existing_isins jobs.
+  - New currencies, FX fallbacks to an earlier date, or changes to any view or migration.
+  - Changing backfill_ecb_rates or fetch_latest_ecb_rates behavior.
+acceptance_criteria:
+  - "fx_pipeline.top_up_ecb_rates requests ECB rates from the earliest of the per-currency latest stored REFEXC dates (inclusive) to today, or from 2010-01-01 when a currency has no stored rate, upserts them, and makes no ECB request when the start is after the end date."
+  - "With apply=False, top_up_ecb_rates fetches and reports the range, rates seen and the latest fetched rate date, and writes nothing to REFEXC."
+  - "update_data.run_update_jobs runs the top-up once before processing jobs when its limit is above 0 and not at all with limit 0; when the top-up raises, it logs a warning and still processes the queued jobs."
+  - "`python -m fondant.jobs.refresh_ecb_rates` is a dry run that prints one summary line (mode, currencies, start, end, rates seen, latest rate date, rates written, applied) and writes only with --apply."
+  - README.md and Documentation/TECHNICAL_ARCHITECTURE.md describe the automatic top-up and the standalone job.
+verify:
+  - .venv/Scripts/python -m pytest -q tests/test_fx_pipeline.py tests/test_update_data_jobs.py tests/test_refresh_ecb_rates_job.py tests/test_update_data_service.py
+  - .venv/Scripts/ruff check fondant/ingestion/fx_pipeline.py fondant/update_data.py fondant/jobs/refresh_ecb_rates.py tests/test_fx_pipeline.py tests/test_update_data_jobs.py tests/test_refresh_ecb_rates_job.py
+  - .venv/Scripts/python -m fondant.jobs.refresh_ecb_rates --help
+  - git diff --check
+smoke:
+  - Start a throwaway PostgreSQL 16 on a free port (a local postgres:16 Docker container or initdb + pg_ctl), create a per-ticket database, point DATABASE_URL at it (postgresql+asyncpg), and run alembic upgrade head. SQLite is not usable here because migration 0008 gives REFEXC a now() server default.
+  - Seed REFEXC with USD, GBP and CHF rates for one recent ECB business day.
+  - Run python -m fondant.jobs.refresh_ecb_rates (real ECB API; retry on a transient 504); it prints the range from that day to today and writes nothing. Run it with --apply; REFEXC gains the rates up to the latest ECB date. A second --apply writes only the overlap and adds no new rows.
+  - Run python -m fondant.jobs.run_update_data_jobs --limit 1 with an empty queue; the top-up runs (REFUPDDTS of the latest rows changes). With --limit 0 nothing is touched. Stop and remove the instance.
+manual_checks:
+  - After merge, the operator reviews the dry run on the live database, then decides whether to run --apply, and re-runs the issue's check query (no non-EUR V2_TAXDATHOMCCY row without FXRAT).

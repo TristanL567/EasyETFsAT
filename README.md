@@ -66,6 +66,14 @@ Naming convention dictionary:
   print(asyncio.run(fetch_latest_ecb_rates()))
   PY
   ```
+- Top up rates from the latest stored date up to today (dry run unless `--apply`):
+  ```bash
+  python -m fondant.jobs.refresh_ecb_rates
+  python -m fondant.jobs.refresh_ecb_rates --apply
+  ```
+  Every update-data run (web button and `python -m fondant.jobs.run_update_data_jobs`)
+  does the same top-up before it processes queued jobs. A failed top-up is logged
+  and does not stop the update.
 
 ## Migration Tests
 

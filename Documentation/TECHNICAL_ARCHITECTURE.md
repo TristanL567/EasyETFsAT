@@ -249,6 +249,15 @@ PY
 
 `fetch_latest_ecb_rates` requests a lookback window because ECB rates are not published on every calendar day.
 
+Top up rates up to today (dry run unless `--apply`):
+
+```bash
+python -m fondant.jobs.refresh_ecb_rates
+python -m fondant.jobs.refresh_ecb_rates --apply
+```
+
+`top_up_ecb_rates` requests rates from the earliest of the per-currency latest stored `REFEXC` dates (inclusive) up to today, or from 2010-01-01 for a currency with no stored rate, so missed runs leave no gaps. `update_data.run_update_jobs` runs it once before processing queued jobs, which covers the web-triggered update and `python -m fondant.jobs.run_update_data_jobs`. A failed top-up is logged as a warning and the update jobs still run. A report whose Zufluss is today gets its rate on the next run after ECB publishes (around 16:00 CET).
+
 ### Database Migrations
 
 Alembic migrations define the database schema. The current head tested by the repository is:

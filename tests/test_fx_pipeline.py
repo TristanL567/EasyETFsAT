@@ -116,3 +116,131 @@ async def test_fetch_latest_ecb_rates_picks_latest_per_currency(
     assert usd is not None and usd.rate_date == date(2026, 4, 11)
     assert usd.rate == Decimal("1.2000")
     assert chf is not None and chf.rate_date == date(2026, 4, 11)
+
+
+class RecordingECBClient(FakeECBClient):
+    def __init__(self, points: list[ECBRatePoint]) -> None:
+        super().__init__(points)
+        self.requests: list[tuple[list[str], date, date]] = []
+
+    async def get_reference_rates(
+        self,
+        *,
+        currency_codes: list[str],
+        start_date: date,
+        end_date: date,
+    ) -> list[ECBRatePoint]:
+        self.requests.append((currency_codes, start_date, end_date))
+        return self._points
+
+
+async def _seed_rates(
+    session_factory: async_sessionmaker[AsyncSession],
+    rates: list[tuple[date, str, str]],
+) -> None:
+    async with session_factory() as session:
+        session.add_all(
+            REFEXC(rate_date=rate_date, currency_code=currency, rate=Decimal(rate))
+            for rate_date, currency, rate in rates
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_top_up_ecb_rates_starts_at_earliest_latest_stored_date(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fx_pipeline, "AsyncSessionFactory", sqlite_session_factory)
+    await _seed_rates(
+        sqlite_session_factory,
+        [
+            (date(2026, 5, 27), "USD", "1.1500"),
+            (date(2026, 5, 28), "USD", "1.1600"),
+            (date(2026, 5, 27), "CHF", "0.9400"),
+            (date(2026, 5, 28), "GBP", "0.8500"),
+        ],
+    )
+    points = [
+        ECBRatePoint(rate_date=date(2026, 5, 28), currency_code="USD", rate=Decimal("1.1600")),
+        ECBRatePoint(rate_date=date(2026, 7, 27), currency_code="USD", rate=Decimal("1.1700")),
+        ECBRatePoint(rate_date=date(2026, 7, 27), currency_code="CHF", rate=Decimal("0.9300")),
+    ]
+    client = RecordingECBClient(points)
+    monkeypatch.setattr(fx_pipeline, "ECBClient", lambda: client)
+
+    result = await fx_pipeline.top_up_ecb_rates(end_date=date(2026, 10, 9))
+
+    assert client.requests == [(["CHF", "GBP", "USD"], date(2026, 5, 27), date(2026, 10, 9))]
+    assert result.start_date == date(2026, 5, 27)
+    assert result.end_date == date(2026, 10, 9)
+    assert result.rates_seen == 3
+    assert result.rates_written == 3
+    assert result.latest_rate_date == date(2026, 7, 27)
+
+    async with sqlite_session_factory() as session:
+        usd = await session.scalar(
+            select(REFEXC).where(REFEXC.currency_code == "USD", REFEXC.rate_date == date(2026, 7, 27))
+        )
+        count = len((await session.scalars(select(REFEXC))).all())
+
+    assert usd is not None and usd.rate == Decimal("1.1700")
+    assert count == 6
+
+
+@pytest.mark.asyncio
+async def test_top_up_ecb_rates_backfills_currency_without_stored_rates(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fx_pipeline, "AsyncSessionFactory", sqlite_session_factory)
+    await _seed_rates(sqlite_session_factory, [(date(2026, 5, 28), "USD", "1.1600")])
+    client = RecordingECBClient([])
+    monkeypatch.setattr(fx_pipeline, "ECBClient", lambda: client)
+
+    result = await fx_pipeline.top_up_ecb_rates(currency_codes=["USD", "CHF"], end_date=date(2026, 10, 9))
+
+    assert client.requests == [(["CHF", "USD"], date(2010, 1, 1), date(2026, 10, 9))]
+    assert result.rates_written == 0
+    assert result.latest_rate_date is None
+
+
+@pytest.mark.asyncio
+async def test_top_up_ecb_rates_dry_run_writes_nothing(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fx_pipeline, "AsyncSessionFactory", sqlite_session_factory)
+    await _seed_rates(sqlite_session_factory, [(date(2026, 5, 28), "USD", "1.1600")])
+    points = [ECBRatePoint(rate_date=date(2026, 7, 27), currency_code="USD", rate=Decimal("1.1700"))]
+    monkeypatch.setattr(fx_pipeline, "ECBClient", lambda: RecordingECBClient(points))
+
+    result = await fx_pipeline.top_up_ecb_rates(
+        currency_codes=["USD"], end_date=date(2026, 10, 9), apply=False
+    )
+
+    assert result.rates_seen == 1
+    assert result.rates_written == 0
+    assert result.latest_rate_date == date(2026, 7, 27)
+
+    async with sqlite_session_factory() as session:
+        rows = (await session.scalars(select(REFEXC))).all()
+
+    assert [(row.rate_date, row.currency_code) for row in rows] == [(date(2026, 5, 28), "USD")]
+
+
+@pytest.mark.asyncio
+async def test_top_up_ecb_rates_skips_request_when_start_is_after_end(
+    sqlite_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fx_pipeline, "AsyncSessionFactory", sqlite_session_factory)
+    await _seed_rates(sqlite_session_factory, [(date(2026, 10, 9), "USD", "1.1600")])
+    client = RecordingECBClient([])
+    monkeypatch.setattr(fx_pipeline, "ECBClient", lambda: client)
+
+    result = await fx_pipeline.top_up_ecb_rates(currency_codes=["USD"], end_date=date(2026, 10, 8))
+
+    assert client.requests == []
+    assert result.rates_seen == 0
+    assert result.rates_written == 0
