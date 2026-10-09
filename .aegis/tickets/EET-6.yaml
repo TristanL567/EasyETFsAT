@@ -1,0 +1,50 @@
+id: EET-6
+goal: The operator can date every stored OeKB report by its stored Zufluss with a one-time job that previews by default and writes only with --apply.
+context: >
+  TAXRPT is re-curated only when a report's payload or version changes, so the
+  EET-5 parser fix leaves stored rows dated by eintragezeit. The job corrects
+  SOURCERPT (SRCMDT/SRCYEA from SRCZFL) and TAXRPT (TAXMDT/TAXYEA from TAXZFL)
+  plus the report-year copies the pipeline writes (SOURCEAGE.SRCYEA,
+  SECDIV.SECYEA), and lists non-EUR reports whose corrected date has no REFEXC
+  rate, since V2_TAXDATHOMCCY joins REFEXC on TAXMDT and EasyRep refuses rows
+  with a NULL FXRAT. The view's 138 columns stay unchanged. Running --apply on
+  the live database is the operator's call (AEGIS always-stop). GitHub issue
+  #6, part of epic #4.
+epic: EPIC-4
+depends_on: [EET-5]
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-6.yaml
+  - fondant/jobs/correct_report_dates.py
+  - tests/test_correct_report_dates_job.py
+  - Documentation/AgentInstructions/CORRECT_REPORT_DATES.md
+must_not_touch:
+  - alembic/
+  - fondant/db/
+  - fondant/oekb/
+  - fondant/ingestion/
+  - fondant/business_query.py
+  - fondant/api/
+  - pyproject.toml
+  - .env
+non_goals:
+  - Running the correction against any shared or live database.
+  - Changing the parser, the ingestion pipeline, migrations, or any view.
+  - Fetching missing ECB rates (the job only reports them; fx_pipeline.backfill_ecb_rates fills them).
+acceptance_criteria:
+  - "Without --apply, `python -m fondant.jobs.correct_report_dates` lists every SOURCERPT and TAXRPT row with a stored Zufluss whose date or year differs from it (old and new values), and writes nothing."
+  - "With --apply it sets SRCMDT/SRCYEA from SRCZFL and TAXMDT/TAXYEA from TAXZFL, and SOURCEAGE.SRCYEA and SECDIV.SECYEA of the same report to the corrected year; rows without a stored Zufluss are untouched; a second run finds nothing to move."
+  - Both modes list every moved non-EUR TAXRPT report that has no REFEXC rate for its currency on its corrected date.
+  - On a database migrated to head, after --apply a USD report's FXRAT in V2_TAXDATHOMCCY is the REFEXC rate of the corrected TAXMDT, and the view still has exactly 138 columns.
+  - Documentation/AgentInstructions/CORRECT_REPORT_DATES.md tells the operator to run the read-only check query and the dry run first, run --apply only with the operator's decision, and lists the brief's three read-only check queries.
+verify:
+  - .venv/bin/python -m pytest -q tests/test_correct_report_dates_job.py
+  - .venv/bin/ruff check fondant/jobs/correct_report_dates.py tests/test_correct_report_dates_job.py
+  - .venv/bin/python -m fondant.jobs.correct_report_dates --help
+  - git diff --check
+smoke:
+  - Start a throwaway PostgreSQL 16 (initdb as the postgres user, pg_ctl on a free port), create a per-ticket database, and run alembic upgrade head against it.
+  - Seed two USD reports dated 2025-10-24 with Zufluss 2025-10-27, one report without Zufluss, and REFEXC USD rates for both dates.
+  - The dry run lists both reports and the database is unchanged; --apply moves them; V2_TAXDATHOMCCY shows TAXMDT 2025-10-27, FXRAT 1.1640 and 138 columns; a second --apply moves nothing. Stop and delete the instance.
+manual_checks:
+  - The operator reviews the dry-run list on the live database, then decides whether and when to run --apply.
