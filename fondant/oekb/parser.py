@@ -48,17 +48,18 @@ def build_sourcerpt_values(
     payload: Mapping[str, Any] = detail.payload if detail is not None else {}
     report_extra = report.model_extra or {}
 
-    report_year = report.report_year or _extract_int(payload, "jahr", "reportYear", "steuerjahr")
-    if report_year is None:
-        report_year = _extract_year_from_mapping(report_extra)
-
+    # OeKB's Meldedatum is the steuerlicher Zufluss; the list sends it as `zufluss`.
     meldg_datum = (
         report.meldg_datum
         or _extract_date(payload, "meldgDatum", "meldedatum")
         or _extract_date_from_mapping(report_extra)
     )
+
+    report_year = report.report_year or _extract_int(payload, "jahr", "reportYear", "steuerjahr")
     if report_year is None and meldg_datum is not None:
         report_year = meldg_datum.year
+    if report_year is None:
+        report_year = _extract_year_from_mapping(report_extra)
 
     eintragezeit = _extract_datetime(report_extra, "eintragezeit")
     if report_year is None and eintragezeit is not None:
@@ -323,11 +324,11 @@ def _extract_year_from_mapping(payload: Mapping[str, Any]) -> int | None:
         return direct
 
     explicit_datetime_keys = (
-        "eintragezeit",
         "meldgDatum",
         "meldedatum",
         "meldeDatum",
         "zufluss",
+        "eintragezeit",
         "gjEnde",
         "gjBeginn",
         "gueltAb",
@@ -361,11 +362,11 @@ def _extract_date_from_mapping(payload: Mapping[str, Any]) -> date | None:
         "meldgDatum",
         "meldedatum",
         "meldeDatum",
+        "zufluss",
         "gueltigVon",
         "gueltigBis",
         "behalteFristDatum",
         "eintragezeit",
-        "zufluss",
         "gjBeginn",
         "gjEnde",
         "gueltAb",

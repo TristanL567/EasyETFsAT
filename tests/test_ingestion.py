@@ -187,7 +187,7 @@ async def test_ingest_isin_is_idempotent_and_logs_runs(
     assert taxcat_count == 6
     assert implog_count == 2
     assert sourcerpt_row is not None
-    assert sourcerpt_row.report_year == 2025
+    assert sourcerpt_row.report_year == 2024
     assert sourcerpt_row.meldg_datum.isoformat() == "2024-07-28"
     assert sourcerpt_row.gj_beginn.isoformat() == "2024-04-01"
     assert sourcerpt_row.gj_ende.isoformat() == "2025-03-31"
