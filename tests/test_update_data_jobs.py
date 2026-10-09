@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import logging
+from datetime import date
 
 import pytest
 from sqlalchemy import create_engine, select
@@ -17,7 +19,16 @@ from fondant import update_data
 from fondant.api.routes.web import _queue_update_data_jobs
 from fondant.db.base import Base
 from fondant.db.models import ACTIVE_UPDATE_DATA_JOB_STATUSES, INGJOB, UPDATE_DATA_JOB_STATUSES
+from fondant.ingestion.fx_pipeline import FXIngestionResult
 from fondant.jobs import run_update_data_jobs
+
+FX_TOP_UP_RESULT = FXIngestionResult(
+    rates_seen=0,
+    rates_written=0,
+    start_date=date(2026, 10, 9),
+    end_date=date(2026, 10, 9),
+    currencies=["CHF", "GBP", "USD"],
+)
 
 
 def test_ingjob_model_shape_imports_cleanly() -> None:
@@ -267,7 +278,14 @@ async def test_run_update_jobs_honors_limit_and_handles_empty_queue(
             message=f"Updated {isin}.",
         )
 
+    top_up_calls: list[str] = []
+
+    async def fake_top_up_ecb_rates() -> FXIngestionResult:
+        top_up_calls.append("top-up")
+        return FX_TOP_UP_RESULT
+
     monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+    monkeypatch.setattr(update_data, "top_up_ecb_rates", fake_top_up_ecb_rates)
 
     try:
         async with session_factory() as session:
@@ -280,7 +298,9 @@ async def test_run_update_jobs_honors_limit_and_handles_empty_queue(
             await session.commit()
 
             summary = await update_data.run_update_jobs(session, limit=1)
+            assert top_up_calls == ["top-up"]
             empty_summary = await update_data.run_update_jobs(session, limit=0)
+            assert top_up_calls == ["top-up"]
 
         assert summary == update_data.UpdateJobRunSummary(
             processed=1,
@@ -299,6 +319,63 @@ async def test_run_update_jobs_honors_limit_and_handles_empty_queue(
             jobs = (await session.scalars(select(INGJOB).order_by(INGJOB.id))).all()
 
         assert [job.status for job in jobs] == ["success", "queued"]
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_run_update_jobs_logs_failed_fx_top_up_and_still_processes_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    engine: AsyncEngine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    session_factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    events: list[str] = []
+
+    async def failing_top_up_ecb_rates() -> FXIngestionResult:
+        events.append("top-up")
+        raise RuntimeError("ECB unavailable")
+
+    async def fake_update_single_isin(isin: str) -> update_data.UpdateDataResult:
+        events.append(isin)
+        return update_data.UpdateDataResult(
+            isin=isin,
+            status="success",
+            records_seen=1,
+            records_written=1,
+            message=f"Updated {isin}.",
+        )
+
+    monkeypatch.setattr(update_data, "top_up_ecb_rates", failing_top_up_ecb_rates)
+    monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+    # Alembic's fileConfig in the migration tests disables already created loggers.
+    monkeypatch.setattr(logging.getLogger("fondant.update_data"), "disabled", False)
+
+    try:
+        async with session_factory() as session:
+            session.add(INGJOB(isin="IE00BMTX1Y45", status="queued", message="queued"))
+            await session.commit()
+
+            with caplog.at_level("WARNING", logger="fondant.update_data"):
+                summary = await update_data.run_update_jobs(session, limit=5)
+
+        assert events == ["top-up", "IE00BMTX1Y45"]
+        assert summary == update_data.UpdateJobRunSummary(
+            processed=1,
+            successes=1,
+            failures=0,
+            skipped=0,
+        )
+        assert "ECB rate top-up failed" in caplog.text
+        assert "ECB unavailable" in caplog.text
     finally:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
@@ -411,7 +488,11 @@ async def test_run_update_data_jobs_cli_uses_configured_session_and_prints_summa
             message=f"Updated {isin}.",
         )
 
+    async def fake_top_up_ecb_rates() -> FXIngestionResult:
+        return FX_TOP_UP_RESULT
+
     monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
+    monkeypatch.setattr(update_data, "top_up_ecb_rates", fake_top_up_ecb_rates)
     monkeypatch.setattr(run_update_data_jobs, "AsyncSessionFactory", session_factory)
 
     try:

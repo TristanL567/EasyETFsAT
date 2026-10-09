@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -8,7 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from fondant.db.models import INGJOB
 from fondant.db.session import AsyncSessionFactory
+from fondant.ingestion.fx_pipeline import top_up_ecb_rates
 from fondant.ingestion.pipeline import ingest_isin
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -106,8 +110,28 @@ async def run_next_update_job(session: AsyncSession) -> INGJOB | None:
     return job
 
 
+async def top_up_fx_rates() -> None:
+    """Load ECB rates up to today; a failure is logged and never blocks updates."""
+    try:
+        result = await top_up_ecb_rates()
+    except Exception:
+        logger.warning("ECB rate top-up failed; update jobs continue without it.", exc_info=True)
+        return
+
+    logger.info(
+        "ECB rate top-up %s..%s: %s rates written, latest rate date %s.",
+        result.start_date,
+        result.end_date,
+        result.rates_written,
+        result.latest_rate_date,
+    )
+
+
 async def run_update_jobs(session: AsyncSession, limit: int = 1) -> UpdateJobRunSummary:
     """Process queued update-data jobs up to the provided non-negative limit."""
+    if limit > 0:
+        await top_up_fx_rates()
+
     processed = 0
     successes = 0
     failures = 0
