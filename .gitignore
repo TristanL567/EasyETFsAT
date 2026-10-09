@@ -9,3 +9,7 @@ build/
 *.egg-info/
 alembic/__pycache__/
 
+
+# AEGIS local agent state
+.aegis/active-ticket
+.claude/worktrees/
