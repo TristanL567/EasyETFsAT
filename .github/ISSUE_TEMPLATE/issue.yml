@@ -1,0 +1,27 @@
+name: Issue
+description: Any other piece of work (docs, refactor, chore, investigation). Add it as a sub-issue of an epic, or leave it standalone for small work.
+labels: [issue]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Done when
+      description: Checkable outcomes, one per line.
+    validations:
+      required: true
+  - type: dropdown
+    id: gates
+    attributes:
+      label: Human gates
+      options:
+        - fully automatic (no gates)
+        - ticket
+        - merge
+        - ticket and merge
+      default: 0

@@ -1,0 +1,45 @@
+id: EET-2
+goal: Agents and the human can run EasyETFsAT work from the GitHub board through AEGIS, from epic issue to validated commits and a pull request.
+context: >
+  Epics live as `epic` issues on the EasyETFsAT project board; their work is
+  added as sub-issues of kind bug, feature, user-story, or issue. Every agent
+  must be able to map a sub-issue to one AEGIS ticket, branch, commit, and
+  pull request from AGENTS.md alone, fully automatically unless a gate label
+  is set. The managed aegis block in AGENTS.md stays untouched so AEGIS
+  updates can replace it. GitHub issue #2, part of epic #1.
+epic: EPIC-1
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-2.yaml
+  - AGENTS.md
+  - .github/ISSUE_TEMPLATE/
+must_not_touch:
+  - .claude/skills/
+  - .aegis/VERSION
+  - CLAUDE.md
+  - epics/
+  - fondant/
+  - tests/
+  - alembic/
+non_goals:
+  - Changing any rule inside the <!-- aegis:begin --> ... <!-- aegis:end --> block.
+  - Migrating or deleting the legacy epics/ envelopes and ledgers.
+  - CI workflows, label-sync automation, or GitHub Actions.
+  - Changing application code, tests, or the README.
+acceptance_criteria:
+  - The aegis block in AGENTS.md is byte-identical to the bootstrapped one, and a project section follows it.
+  - The project section states that epics are `epic` issues on the board, that sub-issues are one of `bug`, `feature`, `user-story`, `issue`, and how an epic issue and a sub-issue map to an AEGIS epic ID, ticket ID, ticket file, and branch.
+  - The project section states that runs are fully automatic unless `aegis:gate-ticket` or `aegis:gate-merge` is set, which steps the agent does on GitHub (commit, push, pull request, issue references), and which actions still stop for the human.
+  - Branching follows the human's decision of 2026-10-09 - the open pull request is the source of truth. Agents find the epic's (or standalone issue's) open pull request into main and continue on its head branch, otherwise start a new branch from main; a merged or closed pull request's branch is never continued; cloud sessions merge the open pull request's head into their designated branch and supersede it.
+  - The project section names the repo's verify commands (pytest, ruff) and says the legacy epics/ envelopes are historical and no new ones are written.
+  - .github/ISSUE_TEMPLATE/ has valid issue forms for epic, bug, feature, user story, and issue, each applying its matching label, and the epic form adds the issue to project TristanL567/2.
+verify:
+  - bash -c 'diff <(git show b10c187:AGENTS.md) <(sed -n "/<!-- aegis:begin -->/,/<!-- aegis:end -->/p" AGENTS.md)'
+  - grep -q "^## Project workflow" AGENTS.md
+  - bash -c 'for w in "aegis:gate-ticket" "aegis:gate-merge" "user-story" "EPIC-" "EET-" "aegis/EPIC-" "pytest" "ruff check" "epics/"; do grep -qF -- "$w" AGENTS.md || { echo "missing $w"; exit 1; }; done'
+  - python3 -I -c "import yaml,pathlib; d=pathlib.Path('.github/ISSUE_TEMPLATE'); want={'epic.yml':'epic','bug.yml':'bug','feature.yml':'feature','user-story.yml':'user-story','issue.yml':'issue'}; [print(f, yaml.safe_load((d/f).read_text())['labels']) or None for f in want]; assert all(yaml.safe_load((d/f).read_text())['labels']==[l] for f,l in want.items()); assert yaml.safe_load((d/'epic.yml').read_text())['projects']==['TristanL567/2']; assert all(isinstance(yaml.safe_load((d/f).read_text())['body'], list) for f in want)"
+  - git diff --check
+smoke: []
+manual_checks:
+  - On GitHub, New issue offers Epic, Bug, Feature, User story, and Issue; an issue created from each form carries its label, and an epic lands on the board.

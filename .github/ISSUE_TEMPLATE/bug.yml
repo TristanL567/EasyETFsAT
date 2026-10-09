@@ -1,0 +1,34 @@
+name: Bug
+description: Something behaves wrongly. Add it as a sub-issue of an epic, or leave it standalone for small work.
+labels: [bug]
+body:
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happens
+      description: Observed behavior, with error output if any.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: ISINs, tax years, endpoints, or GUI steps involved.
+    validations:
+      required: true
+  - type: dropdown
+    id: gates
+    attributes:
+      label: Human gates
+      options:
+        - fully automatic (no gates)
+        - ticket
+        - merge
+        - ticket and merge
+      default: 0

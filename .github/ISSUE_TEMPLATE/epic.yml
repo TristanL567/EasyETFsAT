@@ -1,0 +1,36 @@
+name: Epic
+description: A larger outcome on the board. Add its work as sub-issues.
+title: "Epic: "
+labels: [epic]
+projects: ["TristanL567/2"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The outcome when the epic is done, and who it serves.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and boundaries
+      description: What is in, what is explicitly out, areas that must not change.
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Checkable outcomes for the whole epic.
+    validations:
+      required: true
+  - type: dropdown
+    id: gates
+    attributes:
+      label: Human gates
+      description: Applies to every sub-issue. Also settable with the aegis:gate-ticket and aegis:gate-merge labels.
+      options:
+        - fully automatic (no gates)
+        - ticket
+        - merge
+        - ticket and merge
+      default: 0

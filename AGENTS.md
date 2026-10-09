@@ -163,3 +163,89 @@ Notes:        <abstractions added and why, follow-up tickets, risks>
 Keep it short enough that the human can judge the change without reading the
 whole diff.
 <!-- aegis:end -->
+
+## Project workflow (EasyETFsAT)
+
+Work is planned on the
+[EasyETFsAT board](https://github.com/users/TristanL567/projects/2/views/1)
+and delivered through the AEGIS loop above. This section maps GitHub onto it;
+the rules above still apply in full.
+
+**Issues**
+- An epic is an issue labelled `epic`. Epics are the items on the board.
+- Work under an epic is added as sub-issues of the epic. Each sub-issue has
+  exactly one kind label: `bug`, `feature`, `user-story`, or `issue`.
+- Use the issue forms in `.github/ISSUE_TEMPLATE/`. Small work may be a
+  standalone bug, feature, user story, or issue without an epic.
+- Work too big for one ticket is split before it starts: under an epic, into
+  further sub-issues of that epic (siblings, not nested); a standalone issue
+  becomes an epic with its own sub-issues. One issue is never several
+  tickets.
+
+**IDs**
+
+| GitHub | AEGIS |
+| --- | --- |
+| Epic issue #N | epic `EPIC-N` |
+| Sub-issue or standalone issue #M | ticket `EET-M` in `.aegis/tickets/EET-M.yaml` |
+
+- One issue is one ticket and one validated commit `[EET-M] what changed`.
+  A ticket of an epic sets `epic: EPIC-N`.
+- The ticket's `context` names the issue (`GitHub issue #M, part of epic
+  #N`); the originating request passed to the validator is the issue's title
+  and body.
+
+**Branches and pull requests**
+- The open pull request is the source of truth, not a branch name. Before
+  working on epic #N, find its open pull request into `main` (its body
+  contains `Part of #N` or `Closes #N`); for a standalone issue #M, the one
+  containing `Closes #M`. There is at most one.
+- If it exists, continue on its head branch. If none is open, start a new
+  branch from `main` (`aegis/EPIC-N` or `aegis/EET-M`) and open a new pull
+  request. Never continue a branch whose pull request was merged or closed.
+- Locally, each ticket of an epic runs on `aegis/EET-M` branched from the
+  epic's branch and is merged into it once validated.
+- A cloud session pushes only to its designated branch; the container is
+  the worktree, and each ticket is one commit on that branch. If an open
+  pull request already exists on another branch, merge its head into the
+  designated branch (never reset or force-push), open the new pull request,
+  and close the old one with a comment linking the new one. Committing a
+  ticket onto the designated branch counts as merging it into the epic
+  branch, so with a `merge` gate the agent stops before that commit.
+
+**Fully automatic by default**
+- `human_gates` is `[]` unless the issue (or its epic) carries
+  `aegis:gate-ticket` or `aegis:gate-merge`, its form's "Human gates" field
+  names a gate, or the human asks for one. A gate on the epic applies to all
+  its sub-issues.
+- This section is the human's standing request to push and open pull
+  requests. Without gates the agent runs without stopping. For each
+  sub-issue, in the epic's sub-issue order: ticket, implement, validate,
+  commit onto the epic's branch. After the last one: validate the epic
+  branch (epic mode), push, and open or update the pull request into `main`.
+- The pull request body lists `Closes #M` for each issue it completes. It
+  adds `Closes #N` only when it completes every open sub-issue of the epic;
+  otherwise it says `Part of #N`.
+- The agent comments the completion report on each sub-issue it finishes.
+- When the run stops early (a gate, `BLOCKED`, or three failed validation
+  rounds), the agent pushes the tickets already validated, opens or updates
+  the pull request as above, comments the reason on the sub-issue where it
+  stopped, and waits; later sub-issues wait too. The human answers on that
+  issue or in the session.
+- Everything in the "always stop" list under Human gates stops for the
+  human. Here that means in particular: merging or pushing into `main`,
+  deploys (Render) and releases, migrations on shared data, secrets, and
+  deleting data or branches or rewriting pushed history.
+
+**Checks**
+- Python 3.11+, install with `pip install -e ".[dev]"`.
+- Default `verify` commands: `pytest <the touched test files>` and
+  `ruff check .`. Tests marked `postgres` need Docker and skip without it.
+- Smoke: `alembic upgrade head`, then
+  `uvicorn fondant.api.main:app --port <free port>`, with `DATABASE_URL`
+  pointing at a per-ticket database, never the shared `easyetfsat` one.
+
+**Legacy**
+- `epics/` (envelopes, ledgers, ticket envelopes for BQ4 to BQ6) records the
+  workflow used before AEGIS. It is historical: read it for context, never
+  add to it.
