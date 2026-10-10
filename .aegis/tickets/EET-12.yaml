@@ -1,0 +1,42 @@
+id: EET-12
+goal: Running Alembic migrations in-process leaves the application's loggers enabled, so the full test suite passes the update-data background logging test without per-test workarounds.
+context: >
+  alembic/env.py calls fileConfig() with the default
+  disable_existing_loggers=True. tests/test_migrations.py runs Alembic in the
+  pytest process, which disables every logger created earlier (for example
+  fondant.api.routes.web and fondant.update_data) for the rest of the session.
+  That empties caplog in later tests, and EET-7 had to re-enable a logger by
+  hand. Passing disable_existing_loggers=False keeps the alembic.ini log
+  levels and handlers and only stops it from silencing other loggers. The
+  Render start command runs Alembic in its own process, so prod is unaffected.
+  No migration revision changes. GitHub issue #12, standalone.
+epic: null
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-12.yaml
+  - alembic/env.py
+  - tests/test_update_data_jobs.py
+must_not_touch:
+  - alembic/versions/
+  - alembic.ini
+  - fondant/
+  - pyproject.toml
+  - .env
+non_goals:
+  - Changing alembic.ini logging levels or handlers.
+  - The route registration test failure (issue #11).
+  - Any migration revision.
+acceptance_criteria:
+  - "alembic/env.py calls fileConfig(config.config_file_name, disable_existing_loggers=False); nothing else in env.py changes."
+  - "`pytest tests/test_migrations.py tests/test_web_routes.py -k \"fresh_install or background_trigger_failure\"` fails before the change and passes after it."
+  - "The EET-7 workaround (re-enabling the fondant.update_data logger) is removed from tests/test_update_data_jobs.py, and that test still passes after the migration tests."
+  - "alembic upgrade head still runs and prints its INFO lines."
+verify:
+  - .venv/Scripts/python -m pytest -q tests/test_migrations.py tests/test_web_routes.py tests/test_update_data_jobs.py -k "fresh_install or background_trigger_failure or logs_failed_fx"
+  - .venv/Scripts/python -m pytest -q tests/test_update_data_jobs.py tests/test_migrations.py
+  - .venv/Scripts/ruff check alembic/env.py tests/test_update_data_jobs.py
+  - git diff --check
+smoke:
+  - Point DATABASE_URL at a per-ticket SQLite file in a temp directory (sqlite+aiosqlite) and run `alembic upgrade head`; it completes and prints the alembic.runtime.migration INFO lines. Delete the file.
+manual_checks: []

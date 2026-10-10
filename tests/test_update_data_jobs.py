@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import logging
 from datetime import date
 
 import pytest
@@ -356,8 +355,6 @@ async def test_run_update_jobs_logs_failed_fx_top_up_and_still_processes_jobs(
 
     monkeypatch.setattr(update_data, "top_up_ecb_rates", failing_top_up_ecb_rates)
     monkeypatch.setattr(update_data, "update_single_isin", fake_update_single_isin)
-    # Alembic's fileConfig in the migration tests disables already created loggers.
-    monkeypatch.setattr(logging.getLogger("fondant.update_data"), "disabled", False)
 
     try:
         async with session_factory() as session:
