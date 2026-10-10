@@ -311,6 +311,41 @@ def test_migrations_sqlite_fresh_install(tmp_path: Path) -> None:
     _assert_rebuilt_architecture(database_url)
 
 
+def test_migrations_sqlite_timestamp_defaults_work(tmp_path: Path) -> None:
+    sqlite_file = tmp_path / "defaults.sqlite3"
+    database_url = f"sqlite:///{sqlite_file.as_posix()}"
+
+    _run_alembic_upgrade(database_url)
+
+    engine = create_engine(database_url, future=True)
+    try:
+        with engine.begin() as conn:
+            tables = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type = 'table'")
+            ).scalars().all()
+            postgres_only_defaults = [
+                f"{table}.{column[1]}"
+                for table in tables
+                for column in conn.execute(text(f'PRAGMA table_info("{table}")')).all()
+                if column[4] is not None and "now()" in str(column[4]).lower()
+            ]
+            assert postgres_only_defaults == []
+
+            conn.execute(
+                text(
+                    'INSERT INTO "REFEXC" ("REFDAT", "REFCCY", "REFRAT") '
+                    "VALUES ('2026-07-27', 'USD', 1.1389)"
+                )
+            )
+            created, updated = conn.execute(
+                text('SELECT "REFCRTDTS", "REFUPDDTS" FROM "REFEXC"')
+            ).one()
+        assert created is not None
+        assert updated is not None
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.postgres
 def test_migrations_postgres_fresh_install(postgres_url: str) -> None:
     _run_alembic_upgrade(postgres_url)

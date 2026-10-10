@@ -1,0 +1,50 @@
+id: EET-13
+goal: A SQLite database migrated with `alembic upgrade head` accepts inserts that rely on timestamp server defaults, while Postgres keeps exactly the same `now()` defaults.
+context: >
+  Seven migrations (0001, 0004, 0006, 0008, 0013, 0014, 0016) declare
+  `server_default=sa.text("now()")`, which is Postgres-only, while the ORM
+  models use `func.now()`. On SQLite every insert that relies on these
+  defaults fails with "unknown function: now()", so SQLite cannot be used for
+  per-ticket smoke tests (the EET-7 validator hit this). `sa.func.now()`
+  renders `now()` on Postgres and `CURRENT_TIMESTAMP` on SQLite. Editing the
+  existing revisions is safe: Alembic does not re-run applied revisions, the
+  head revision is unchanged, and Postgres DDL stays identical, so the live
+  database and the Render start command (`alembic upgrade head`) are
+  unaffected. GitHub issue #13, standalone.
+epic: null
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-13.yaml
+  - alembic/versions/20260418_0001_initial_schema.py
+  - alembic/versions/20260418_0004_add_taxlst_table.py
+  - alembic/versions/20260419_0006_rebuild_source_curated_architecture.py
+  - alembic/versions/20260419_0008_add_refexc_and_extend_v1_taxdatpre.py
+  - alembic/versions/20260530_0013_add_ingestion_job_tracking.py
+  - alembic/versions/20260530_0014_add_saved_business_query_schema.py
+  - alembic/versions/20260531_0016_add_saved_query_groups_schema.py
+  - tests/test_migrations.py
+must_not_touch:
+  - alembic/env.py
+  - alembic.ini
+  - fondant/
+  - pyproject.toml
+  - .env
+non_goals:
+  - A new Alembic revision, or any change to revision IDs, down_revision, or the head.
+  - Running migrations against any shared or live database.
+  - Any other column, constraint, index or view change.
+acceptance_criteria:
+  - "Every `server_default=sa.text(\"now()\")` in alembic/versions/ becomes `server_default=sa.func.now()`; no other line in the migrations changes."
+  - "New test test_migrations_sqlite_timestamp_defaults_work fails on main and passes after the change: after `alembic upgrade head` on SQLite no column default contains now(), and an insert into REFEXC without timestamps succeeds with both timestamps set."
+  - "On Postgres, `alembic upgrade head` from scratch still works and the timestamp columns' defaults are `now()`."
+  - "`alembic heads` still reports 20260602_0019."
+verify:
+  - .venv/Scripts/python -m pytest -q tests/test_migrations.py
+  - .venv/Scripts/ruff check alembic tests/test_migrations.py
+  - .venv/Scripts/alembic heads
+  - git diff --check
+smoke:
+  - Start a throwaway PostgreSQL 16 on a free port (local postgres:16 Docker image) with a per-ticket database, point DATABASE_URL at it (postgresql+asyncpg), run `alembic upgrade head`, and check in information_schema.columns that REFEXC.REFCRTDTS and INGJOB.JOBCRTDTS (or the INGJOB created-at column) have column_default `now()`. Insert into REFEXC without timestamps; it succeeds. Stop and remove the instance.
+  - Point DATABASE_URL at a per-ticket SQLite file (sqlite+aiosqlite), run `alembic upgrade head`, insert into REFEXC without timestamps; it succeeds. Delete the file.
+manual_checks: []

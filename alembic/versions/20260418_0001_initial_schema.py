@@ -21,13 +21,13 @@ def _id_and_timestamps(domain: str) -> list[sa.Column]:
             f"{domain}CRTDTS",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
         ),
         sa.Column(
             f"{domain}UPDDTS",
             sa.DateTime(timezone=True),
             nullable=False,
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
         ),
     ]
 

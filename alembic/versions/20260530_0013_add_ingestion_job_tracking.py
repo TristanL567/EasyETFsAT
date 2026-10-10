@@ -20,13 +20,13 @@ def upgrade() -> None:
         sa.Column(
             "JOBCRTDTS",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
             nullable=False,
         ),
         sa.Column(
             "JOBUPDDTS",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
             nullable=False,
         ),
         sa.Column("JOBISN", sa.String(length=12), nullable=False),

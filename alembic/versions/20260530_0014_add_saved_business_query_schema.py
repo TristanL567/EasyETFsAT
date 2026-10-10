@@ -21,13 +21,13 @@ def upgrade() -> None:
         sa.Column(
             "BQSCRTDTS",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
             nullable=False,
         ),
         sa.Column(
             "BQSUPDDTS",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.func.now(),
             nullable=False,
         ),
         sa.Column("BQSUSR", sa.String(length=255), nullable=False),
