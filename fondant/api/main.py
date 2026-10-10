@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from fondant.api.routes.etf import router as etf_router
 from fondant.api.routes.health import router as health_router
+from fondant.api.routes.update_jobs import router as update_jobs_router
 from fondant.api.routes.web import router as web_router
 from fondant.config import get_settings
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(web_router)
     app.include_router(health_router)
     app.include_router(etf_router)
+    app.include_router(update_jobs_router)
     return app
 
 

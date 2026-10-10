@@ -1658,7 +1658,7 @@ async def _queue_update_data_jobs(
     username: str,
 ) -> tuple[dict[str, str], ...]:
     results: list[dict[str, str]] = []
-    jobs_to_queue: list[INGJOB] = []
+    jobs_to_queue: list[tuple[INGJOB, dict[str, str]]] = []
 
     for isin in normalized_isins:
         with session.no_autoflush:
@@ -1666,6 +1666,7 @@ async def _queue_update_data_jobs(
         if active_job is not None:
             results.append(
                 {
+                    "id": str(active_job.id),
                     "isin": isin,
                     "status": "skipped",
                     "message": "Skipped: active update job already exists.",
@@ -1680,10 +1681,14 @@ async def _queue_update_data_jobs(
             message="Queued for update.",
         )
         session.add(job)
-        jobs_to_queue.append(job)
-        results.append({"isin": isin, "status": "queued", "message": "Queued for update."})
+        result = {"isin": isin, "status": "queued", "message": "Queued for update."}
+        jobs_to_queue.append((job, result))
+        results.append(result)
 
     if jobs_to_queue:
+        await session.flush()
+        for job, result in jobs_to_queue:
+            result["id"] = str(job.id)
         await session.commit()
 
     return tuple(results)

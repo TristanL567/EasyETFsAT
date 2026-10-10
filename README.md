@@ -48,6 +48,54 @@ Naming convention dictionary:
 
 - `GET /etf/{isin}/tax?year={year}`
 
+## Update-Jobs API (EasyRep)
+
+JSON API for queueing update-data jobs and reading their status, used by EasyRep.
+Every request needs the header `X-EasyETFsAT-Token`, compared in constant time with the env
+var `EASYETFSAT_API_TOKEN`. If the env var is unset or empty, every route answers `503`. A
+missing or wrong token gets `401`. The token is checked before the body, and the web
+session cookie does not authenticate these routes.
+
+- `POST /api/update-jobs` queues jobs with `JOBREQUSR = "easyrep"` and starts the same
+  background runner as the web form. Before it processes jobs, the runner tops up ECB rates.
+  - Body: exactly one of `{"isins": ["IE00BMTX1Y45", ...]}` (1 to 50 strings) or
+    `{"scope": "existing"}` (every ISIN in `SOURCERPT`, no limit).
+  - Each ISIN is trimmed, upper-cased and checked for format and checksum, like the web form.
+    Duplicates are queued once.
+  - `202` response:
+    ```json
+    {"jobs": [{"id": 31, "isin": "IE00BMTX1Y45", "status": "queued"}],
+     "rejected": [{"value": "IE00BMTX1Y46", "reason": "invalid_isin"}],
+     "skipped": [{"id": 30, "isin": "LU1681044993", "reason": "active_job"}]}
+    ```
+    `skipped` lists ISINs that already have a `queued` or `running` job, with that job's id.
+    A request where every ISIN is rejected still answers `202`, with empty `jobs`.
+  - `422` for a body that is not a JSON object, has both or neither key, a `scope` other than
+    `"existing"`, an `isins` value that is not a non-empty list of strings, or more than 50 ISINs.
+- `GET /api/update-jobs?ids=31,30` returns up to 100 jobs:
+  ```json
+  {"jobs": [{"id": 31, "isin": "IE00BMTX1Y45", "status": "success",
+             "message": "Processed 6 FIN reports; wrote 1; ...", "error": null,
+             "created": "2026-10-10T09:00:00Z", "started": "2026-10-10T09:00:01Z",
+             "finished": "2026-10-10T09:00:09Z"}],
+   "not_found": [30]}
+  ```
+  `status` is one of `queued|running|success|failed|skipped|cancelled`, `message` is `JOBMSG`,
+  `error` is `JOBERR`, and the times are ISO 8601 UTC (`null` until set). Repeated ids are
+  returned once. Malformed `ids`, no
+  ids, ids outside 1..2147483647, or more than 100 ids get `422`.
+- `GET /api/update-jobs/{id}` returns one job object as above, `404` if it does not exist,
+  or `422` for an id outside 1..2147483647.
+
+Example:
+
+```bash
+curl -X POST "$EASYETFSAT_URL/api/update-jobs" \
+  -H "X-EasyETFsAT-Token: $EASYETFSAT_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"isins": ["IE00BMTX1Y45"]}'
+```
+
 ## FX Pipeline (ECB)
 
 - Backfill historical FX rates (`USD`, `GBP`, `CHF`) into `REFEXC`:

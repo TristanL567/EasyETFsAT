@@ -127,13 +127,14 @@ async def test_queue_update_data_jobs_creates_queued_rows_and_skips_active_dupli
             )
 
         assert results == (
-            {"isin": "IE00BMTX1Y45", "status": "queued", "message": "Queued for update."},
+            {"id": "2", "isin": "IE00BMTX1Y45", "status": "queued", "message": "Queued for update."},
             {
+                "id": "1",
                 "isin": "LU1681044993",
                 "status": "skipped",
                 "message": "Skipped: active update job already exists.",
             },
-            {"isin": "US0378331005", "status": "queued", "message": "Queued for update."},
+            {"id": "3", "isin": "US0378331005", "status": "queued", "message": "Queued for update."},
         )
 
         async with session_factory() as session:
