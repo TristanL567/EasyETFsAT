@@ -166,10 +166,23 @@ async def test_static_css_is_served(web_client: httpx.AsyncClient) -> None:
     assert "@media" in response.text
 
 
+def _route_paths(routes: list) -> set[str]:
+    paths: set[str] = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        if path is not None:
+            paths.add(path)
+        # FastAPI 0.143+ adds an included router as one lazy route without a path.
+        included = getattr(route, "original_router", None)
+        if included is not None:
+            paths |= _route_paths(included.routes)
+    return paths
+
+
 def test_app_startup_registers_static_web_and_api_routes_together() -> None:
     app = create_app()
 
-    route_paths = {getattr(route, "path", "") for route in app.routes}
+    route_paths = _route_paths(app.routes)
 
     assert "/static" in route_paths
     assert "/" in route_paths
