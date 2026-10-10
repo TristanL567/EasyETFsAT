@@ -1,0 +1,38 @@
+id: EET-9
+goal: A fresh `pip install -e .` installs greenlet, so the app starts on Render and deploys of main go live again.
+context: >
+  Render builds with `pip install -e .` and no cache, so `sqlalchemy>=2.0.35`
+  resolves to SQLAlchemy 2.1, which no longer installs greenlet automatically.
+  The app imports sqlalchemy.ext.asyncio at startup and crashes, so the
+  deploys of PR #3 and PR #8 failed and prod still runs the 2026-06-06 build.
+  The fix is to require the `asyncio` extra, which is SQLAlchemy's documented
+  way to pull in greenlet. Merging into main and the Render deploy are the
+  human's call (AEGIS always-stop). GitHub issue #9, standalone.
+epic: null
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-9.yaml
+  - pyproject.toml
+must_not_touch:
+  - alembic/
+  - fondant/
+  - tests/
+  - .env
+non_goals:
+  - Pinning or upgrading any other dependency, or capping SQLAlchemy below 2.1.
+  - Changing the Render service configuration (build or start command, Python version, cache).
+  - Fixing the pre-existing tests/test_web_routes.py failures.
+acceptance_criteria:
+  - "pyproject.toml requires `sqlalchemy[asyncio]>=2.0.35` instead of `sqlalchemy>=2.0.35`; no other dependency changes."
+  - "In a fresh virtualenv, `pip install -e .` (no extras) installs greenlet, and `python -c \"import fondant.api.main\"` succeeds."
+  - "The same fresh install can start the app: `uvicorn fondant.api.main:app` on a free port answers GET /health with 200."
+verify:
+  - git diff origin/main -- pyproject.toml
+  - .venv/Scripts/python -m pytest -q tests/test_fx_pipeline.py tests/test_update_data_jobs.py
+  - git diff --check
+smoke:
+  - Create a fresh virtualenv outside the repo, run `pip install -e .` from the worktree (no extras), and confirm `pip show greenlet` finds it and `python -c "import fondant.api.main"` succeeds.
+  - Start a throwaway PostgreSQL 16 on a free port with a per-ticket database, set DATABASE_URL to it (postgresql+asyncpg), run `alembic upgrade head` with the fresh virtualenv, then start `uvicorn fondant.api.main:app --port <free port>` from it and GET /health returns 200. Stop the server and the database and delete the virtualenv.
+manual_checks:
+  - After merge, the operator confirms on Render that the deploy of main reaches "live" and https://easyetfsat-1.onrender.com/health answers.
