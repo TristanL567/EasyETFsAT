@@ -1,0 +1,57 @@
+id: EET-18
+goal: EasyRep can queue update-data jobs and read their status over a token-authenticated JSON API (POST /api/update-jobs, GET /api/update-jobs?ids=..., GET /api/update-jobs/{id}).
+context: >
+  EasyRep's "Database update › EasyETFsAT" page must refresh existing ISINs and
+  add new ones without an EasyETFsAT login. The API sits beside the web form
+  and reuses its pieces: ISIN checksum validation, _queue_update_data_jobs
+  (dedupe against active INGJOB rows) and the same background runner
+  (_run_queued_update_jobs_background, which also tops up ECB rates). Auth is
+  the X-EasyETFsAT-Token header compared in constant time with the
+  EASYETFSAT_API_TOKEN setting; no session cookie, no CSRF. The token is
+  checked before the body is parsed, so unauthenticated callers never see
+  validation details. The runner limit covers every queued job so a
+  "scope: existing" request is processed in one run. Setting the secret on
+  Render is the operator's call (AEGIS always-stop). GitHub issue #18,
+  standalone.
+epic: null
+depends_on: []
+human_gates: []
+allowed_areas:
+  - .aegis/tickets/EET-18.yaml
+  - fondant/api/routes/update_jobs.py
+  - fondant/api/routes/web.py
+  - fondant/api/main.py
+  - fondant/config.py
+  - tests/test_update_jobs_api.py
+  - tests/test_update_data_jobs.py
+  - README.md
+  - .env.example
+must_not_touch:
+  - alembic/
+  - fondant/db/
+  - fondant/ingestion/
+  - fondant/update_data.py
+  - fondant/api/templates/
+  - pyproject.toml
+  - .env
+non_goals:
+  - A cron job, worker, or any Render configuration (including setting the secret).
+  - Any change to V2_TAXDATHOMCCY, other views, or migrations.
+  - Changing the web form's behavior or the runner's processing logic.
+acceptance_criteria:
+  - "Every /api/update-jobs route answers 503 when EASYETFSAT_API_TOKEN is unset or empty, and 401 for a missing or wrong X-EasyETFsAT-Token (compared with hmac.compare_digest), checked before the body; a web session cookie does not authenticate."
+  - "POST /api/update-jobs takes exactly one of {\"isins\": [...]} (1-50 strings, else 422) or {\"scope\": \"existing\"} (distinct SOURCERPT ISINs); other bodies get 422. Valid ISINs (format + checksum, trimmed, upper-cased, de-duplicated) are queued through _queue_update_data_jobs with JOBREQUSR \"easyrep\"; invalid values go to rejected; ISINs with an active job go to skipped with that job's id. Response 202 {jobs:[{id,isin,status}], rejected:[{value,reason}], skipped:[{id,isin,reason}]}."
+  - "When at least one job is queued, the same background runner as the web POST is started once, with a limit of at least the number of queued INGJOB rows."
+  - "GET /api/update-jobs?ids=1,2,3 returns {jobs:[...in request order], not_found:[...]}; GET /api/update-jobs/{id} returns one job or 404. Each job has id, isin, status, message (JOBMSG), error (JOBERR), created, started, finished as ISO 8601 UTC with Z, or null. Malformed, empty or more than 100 ids get 422."
+  - "The web update-data form keeps working (JOBREQUSR = logged-in user); README.md documents both endpoints, status codes and the env var; .env.example lists EASYETFSAT_API_TOKEN without a value."
+verify:
+  - .venv/Scripts/python -m pytest -q tests/test_update_jobs_api.py tests/test_update_data_jobs.py tests/test_web_routes.py
+  - .venv/Scripts/python -m pytest -q
+  - .venv/Scripts/ruff check fondant tests
+  - git diff --check
+smoke:
+  - Start a throwaway PostgreSQL 16 on a free port (local postgres:16 Docker image) with a per-ticket database, set DATABASE_URL to it (postgresql+asyncpg) and EASYETFSAT_API_TOKEN to a throwaway value, run alembic upgrade head, and start uvicorn fondant.api.main:app on a free port.
+  - With curl - POST without the header gets 401; POST {"isins":["IE00BMTX1Y45","IE00BMTX1Y46"]} with the header gets 202, one queued job and one rejected value; a second identical POST lists IE00BMTX1Y45 under skipped with the first job's id while it is still queued or running; GET /api/update-jobs?ids=<id> shows the job move to success or failed with ISO 8601 UTC times (the runner calls the real OeKB and ECB APIs; a failed outcome caused by an external outage is acceptable if the status fields are filled).
+  - Restart the server without EASYETFSAT_API_TOKEN; any API route answers 503. Stop the server and the database.
+manual_checks:
+  - The operator sets EASYETFSAT_API_TOKEN on the Render service EasyETFsAT-1 and shares the same value with EasyRep through its secret store.

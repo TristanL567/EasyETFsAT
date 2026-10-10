@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     web_session_secret: str = "change-me-for-deployed-web-sessions"
     web_session_cookie_name: str = "easyetfsat_session"
     web_session_max_age_seconds: int = 8 * 60 * 60
+    easyetfsat_api_token: str | None = None
 
     @property
     def alembic_database_url(self) -> str:
